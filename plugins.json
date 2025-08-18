@@ -1,0 +1,21 @@
+[
+  {
+    "iconUrl": "https://upload.wikimedia.org/wikipedia/commons/2/2f/Korduene_Logo.png",
+    "apiVersion": 1,
+    "repositoryUrl": "https://github.com/kiikuuchii/Kiikuuchi-s-Repo",
+    "fileSize": 7318,
+    "status": 1,
+    "language": "ru",
+    "authors": [
+      "kiikuuchii"
+    ],
+    "tvTypes": [
+      "Movie", "TVShows", "Anime"
+    ],
+    "version": 1,
+    "internalName": "HelloProvider",
+    "description": "Парсер Rezka-UA для CloudStream",
+    "url": "https://raw.githubusercontent.com/kiikuuchii/Kiikuuchi-s-Repo/builds/HelloProvider.cs3",
+    "name": "HelloProvider"
+  }
+]
