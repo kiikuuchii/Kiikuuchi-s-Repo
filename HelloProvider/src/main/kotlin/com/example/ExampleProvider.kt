@@ -9,7 +9,7 @@ class ExampleProvider : MainAPI() { // All providers must be an instance of Main
     override var name = "Example provider"
     override val supportedTypes = setOf(TvType.Movie)
 
-    override var lang = "en"
+    override var lang = "ru"
 
     // Enable this when your provider has a main page
     override val hasMainPage = true
