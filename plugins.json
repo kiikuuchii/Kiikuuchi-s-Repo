@@ -2,15 +2,15 @@
   {
     "iconUrl": "https://upload.wikimedia.org/wikipedia/commons/2/2f/Korduene_Logo.png",
     "apiVersion": 1,
-    "repositoryUrl": "https://github.com/markvis370-star/TestPlugins",
-    "fileSize": 7311,
+    "repositoryUrl": "https://github.com/kiikuuchii/Kiikuuchi-s-Repo",
+    "fileSize": 7318,
     "status": 1,
-    "language": "en",
+    "language": "ru",
     "authors": [
-      "markvis370-star"
+      "kiikuuchii"
     ],
     "tvTypes": [
-      "Movie"
+      "Movie", "TVShows", "Anime"
     ],
     "version": 1,
     "internalName": "HelloProvider",
