@@ -1,0 +1,8 @@
+{
+  "name": "Kiikuuchi's Repo",
+  "description": "Плагины для CloudStream",
+  "manifestVersion": 1,
+  "pluginLists": [
+    "https://raw.githubusercontent.com/kiikuuchii/Kiikuuchi-s-Repo/builds/plugins.json"
+  ]
+}
