@@ -17,26 +17,26 @@
     "description": "Парсер Rezka для CloudStream",
     "url": "https://raw.githubusercontent.com/kiikuuchii/Kiikuuchi-s-Repo/builds/Rezka.cs3",
     "name": "Rezka"
-  }
+  },
   {
-        "iconUrl": "https://raw.githubusercontent.com/LikDev-256/likdev256-tamil-providers/master/AllMovieLandProvider/icon.png",
-        "apiVersion": 1,
-        "repositoryUrl": "https://github.com/kiikuuchii/Kiikuuchi-s-Repo",
-        "fileSize": 27829,
-        "status": 1,
-        "language": "ru",
-        "authors": [
-            "kiikuuchii"
-        ],
-        "tvTypes": [
-            "Movie",
-            "TvSeries",
-            "Cartoon"
-        ],
-        "version": 451,
-        "internalName": "RezkaAG",
-        "description": "Rezka provider",
-        "url": "https://raw.githubusercontent.com/kiikuuchii/Kiikuuchi-s-Repo/builds/RezkaAG.cs3",
-        "name": "RezkaAG"
-    },
+    "iconUrl": "https://raw.githubusercontent.com/LikDev-256/likdev256-tamil-providers/master/AllMovieLandProvider/icon.png",
+    "apiVersion": 1,
+    "repositoryUrl": "https://github.com/kiikuuchii/Kiikuuchi-s-Repo",
+    "fileSize": 27829,
+    "status": 1,
+    "language": "ru",
+    "authors": [
+        "kiikuuchii"
+    ],
+    "tvTypes": [
+        "Movie",
+        "TvSeries",
+        "Cartoon"
+    ],
+    "version": 451,
+    "internalName": "RezkaAG",
+    "description": "Rezka provider",
+    "url": "https://raw.githubusercontent.com/kiikuuchii/Kiikuuchi-s-Repo/builds/RezkaAG.cs3",
+    "name": "RezkaAG"
+ }
 ]
