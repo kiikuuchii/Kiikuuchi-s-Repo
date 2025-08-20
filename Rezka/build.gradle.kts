@@ -1,7 +1,15 @@
-plugins {
-    id("com.android.library")
-    id("kotlin-android")
-    id("com.lagradost.cloudstream3.gradle")
+import org.jetbrains.kotlin.konan.properties.Properties
+
+version = 451
+
+android {
+   buildFeatures {
+       buildConfig = true
+	}
+	defaultConfig {
+	    val properties = Properties()
+		properties.load(project.rootProject.file("local.properties").inputStream())
+   }
 }
 
 cloudstream {
@@ -14,12 +22,6 @@ cloudstream {
 		  "TvSeries",
 		  "Anime",
 		  )
-		  isCrossPlatform = true
+    
+	isCrossPlatform = true
 }
-
-android {
-    buildFeatures {
-        buildConfig = true
-	}
-}	
-
