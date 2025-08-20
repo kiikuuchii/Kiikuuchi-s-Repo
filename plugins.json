@@ -18,4 +18,24 @@
     "url": "https://raw.githubusercontent.com/kiikuuchii/Kiikuuchi-s-Repo/refs/heads/builds/Rezka.cs3",
     "name": "Rezka"
   }
+
+  {
+    "iconUrl": "https://upload.wikimedia.org/wikipedia/commons/2/2f/Korduene_Logo.png",
+    "apiVersion": 1,
+    "repositoryUrl": "https://github.com/kiikuuchii/Kiikuuchi-s-Repo",
+    "fileSize": 27477,
+    "status": 1,
+    "language": "ru",
+    "authors": [
+      "kiikuuchii"
+    ],
+    "tvTypes": [
+      "Movie", "TVShows", "Anime"
+    ],
+    "version": 1,
+    "internalName": "RezkaAG",
+    "description": "Плагин RezkaAG" ,
+    "url": "https://raw.githubusercontent.com/kiikuuchii/Kiikuuchi-s-Repo/refs/heads/builds/RezkaAG.cs3",
+    "name": "Rezka"
+  }
 ]
