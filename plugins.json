@@ -13,9 +13,9 @@
       "Movie", "TVShows", "Anime"
     ],
     "version": 1,
-    "internalName": "HelloProvider",
-    "description": "Парсер Rezka-UA для CloudStream",
+    "internalName": "Rezka",
+    "description": "Парсер Rezka для CloudStream",
     "url": "https://raw.githubusercontent.com/kiikuuchii/Kiikuuchi-s-Repo/builds/Rezka.cs3",
-    "name": "HelloProvider"
+    "name": "Rezka"
   }
 ]
