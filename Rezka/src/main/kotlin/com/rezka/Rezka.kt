@@ -18,36 +18,92 @@ class Rezka : MainAPI() {
     override var lang = "ru"
     override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries)
 
-    //Поиск фильмов/сериалов
     override suspend fun search(query: String): List<SearchResponse> {
-        val url = "$mainUrl/search/?do=search&subaction=search&q=${query.replace(" ", "+")}"
-        val doc = app.get(url).document
-
+        val doc = app.get("$mainUrl/search/?do=search&subaction=search&q=$query").document
         val items = doc.select(".b-content__inline_item")
-        return items.map { el ->
-            val title = el.selectFirst(".b-content__inline_item-link")?.text() ?: "Без названия"
-            val href = el.selectFirst("a")?.attr("href") ?: return@map null
+        return items.mapNotNull { el ->
+            val title = el.selectFirst(".b-content__inline_item-link")?.text() ?: return@mapNotNull null
+            val href = el.selectFirst("a")?.attr("href") ?: return@mapNotNull null
             val poster = el.selectFirst("img")?.attr("src")
             val year = el.selectFirst(".b-content__inline_item-link > div")?.text()?.toIntOrNull()
 
-            newMovieSearchResponse(
-                name = title,
-                url = href,
-                type = TvType.Movie
-            ).apply {
-                this.posterUrl = poster
-                this.year = year
+            val isSeries = href.contains("/series", true) || href.contains("serial", true)
+
+            if (isSeries) {
+                newTvSeriesSearchResponse(title, href, TvType.TvSeries).apply {
+                    posterUrl = poster
+                    this.year = year
+                }
+            } else {
+                newMovieSearchResponse(title, href, TvType.Movie).apply {
+                    posterUrl = poster
+                    this.year = year
+                }
             }
-        }.filterNotNull()
+        }
     }
 
-    //Пока заглушка для открытия фильма
+    // --------------------- LOAD ---------------------
     override suspend fun load(url: String): LoadResponse {
-        return newMovieLoadResponse(
-            name = "Test Load",
-            url = url,
-            type = TvType.Movie,
-            dataUrl = url
-        )
+        val doc = app.get(url).document
+
+        val title = (
+            doc.selectFirst(".b-post__title h1")?.text()
+                ?: doc.selectFirst("h1")?.text()
+                ?: "Без названия"
+        ).trim()
+
+        val poster = doc.selectFirst(".b-post__img img")
+            ?.let { it.attr("data-src").ifBlank { it.attr("src") } }
+            ?.trim()
+
+        val plot = doc.selectFirst(".b-post__description_text, .b-post__description")
+            ?.text()
+            ?.trim()
+
+        val infoMap = mutableMapOf<String, String>()
+        for (tr in doc.select(".b-post__info table tr")) {
+            val key = tr.selectFirst("td.l")?.text()?.trim()?.removeSuffix(":") ?: continue
+            val value = tr.select("td").getOrNull(1)?.text()?.trim() ?: continue
+            infoMap[key] = value
+        }
+
+        val year = infoMap["Год"]?.filter { it.isDigit() }?.take(4)?.toIntOrNull()
+        val genres = infoMap["Жанр"]
+            ?.split(',', '·', '|')
+            ?.map { it.trim() }
+            ?.filter { it.isNotEmpty() }
+            ?: emptyList()
+
+        val looksLikeSeries = doc.selectFirst(".b-simple_season__nav, .b-simple_episode__item, .b-episodes__list") != null ||
+                url.contains("/series", ignoreCase = true) ||
+                url.contains("serial", ignoreCase = true)
+
+        return if (!looksLikeSeries) {
+            newMovieLoadResponse(
+                name = title,
+                url = url,
+                type = TvType.Movie,
+                dataUrl = url
+            ).apply {
+                posterUrl = poster
+                this.plot = plot
+                this.year = year
+                this.tags = genres
+            }
+        } else {
+            val episodes = emptyList<Episode>()
+            newTvSeriesLoadResponse(
+                name = title,
+                url = url,
+                type = TvType.TvSeries,
+                episodes = episodes
+            ).apply {
+                posterUrl = poster
+                this.plot = plot
+                this.year = year
+                this.tags = genres
+            }
+        }
     }
 }
