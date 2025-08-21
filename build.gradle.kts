@@ -36,11 +36,11 @@ subprojects {
 
     cloudstream {
         setRepo(System.getenv("GITHUB_REPOSITORY") ?: "https://github.com/kiikuuchii/Kiikuuchi-s-Repo")
-        authors = listOf("Kiikuuchii")
+        authors = listOf("kiikuuchii")
     }
 
     android {
-        namespace = "com.rezka"
+        namespace = "com.kiikuuchii"
 
         defaultConfig {
             minSdk = 21
