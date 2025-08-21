@@ -13,97 +13,68 @@ import com.lagradost.cloudstream3.SubtitleFile
 import org.jsoup.Jsoup
 
 class Rezka : MainAPI() {
-    override var name = "Rezka"
     override var mainUrl = "https://rezka-ua.org"
+    override var name = "Rezka"
+    override val hasMainPage = false
     override var lang = "ru"
-    override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries)
+    override val supportedTypes = setOf(
+        TvType.Movie,
+        TvType.TvSeries,
+        TvType.Anime
+    )
 
+    // 🔍 Поиск
     override suspend fun search(query: String): List<SearchResponse> {
-        val doc = app.get("$mainUrl/search/?do=search&subaction=search&q=$query").document
-        val items = doc.select(".b-content__inline_item")
-        return items.mapNotNull { el ->
-            val title = el.selectFirst(".b-content__inline_item-link")?.text() ?: return@mapNotNull null
-            val href = el.selectFirst("a")?.attr("href") ?: return@mapNotNull null
-            val poster = el.selectFirst("img")?.attr("src")
-            val year = el.selectFirst(".b-content__inline_item-link > div")?.text()?.toIntOrNull()
+        val url = "$mainUrl/index.php?do=search&subaction=search&q=$query"
+        val document = app.get(url).document
 
-            val isSeries = href.contains("/series", true) || href.contains("serial", true)
-
-            if (isSeries) {
-                newTvSeriesSearchResponse(title, href, TvType.TvSeries).apply {
-                    posterUrl = poster
-                    this.year = year
-                }
-            } else {
-                newMovieSearchResponse(title, href, TvType.Movie).apply {
-                    posterUrl = poster
-                    this.year = year
-                }
+        return document.select("div.b-content__inline_item").mapNotNull { element ->
+            val title = element.selectFirst("div.b-content__inline_item-link a")?.text() ?: return@mapNotNull null
+            val href = element.selectFirst("div.b-content__inline_item-link a")?.attr("href") ?: return@mapNotNull null
+            val poster = element.selectFirst("div.b-content__inline_item-cover img")?.attr("src")
+            val quality = element.selectFirst("div.b-content__inline_item-cover span.cat")?.text()
+            val type = when {
+                quality?.contains("аниме", true) == true -> TvType.Anime
+                else -> TvType.Movie
+            }
+            newMovieSearchResponse(title, href, type) {
+                this.posterUrl = poster
             }
         }
     }
 
-    // --------------------- LOAD ---------------------
-    override suspend fun load(url: String): LoadResponse {
-        val doc = app.get(url).document
+    // 📄 Загрузка страницы фильма/сериала
+    override suspend fun load(url: String): LoadResponse? {
+        val document = app.get(url).document
 
-        val title = (
-            doc.selectFirst(".b-post__title h1")?.text()
-                ?: doc.selectFirst("h1")?.text()
-                ?: "Без названия"
-        ).trim()
+        val title = document.selectFirst("div.b-post__title h1")?.text() ?: return null
+        val poster = document.selectFirst("div.b-sidecover img")?.attr("src")
+        val description = document.selectFirst("div.b-post__description_text")?.text()
+        val year = document.select("table.b-post__info tr:contains(Год:) td").text().toIntOrNull()
 
-        val poster = doc.selectFirst(".b-post__img img")
-            ?.let { it.attr("data-src").ifBlank { it.attr("src") } }
-            ?.trim()
-
-        val plot = doc.selectFirst(".b-post__description_text, .b-post__description")
-            ?.text()
-            ?.trim()
-
-        val infoMap = mutableMapOf<String, String>()
-        for (tr in doc.select(".b-post__info table tr")) {
-            val key = tr.selectFirst("td.l")?.text()?.trim()?.removeSuffix(":") ?: continue
-            val value = tr.select("td").getOrNull(1)?.text()?.trim() ?: continue
-            infoMap[key] = value
+        // Определение типа
+        val isAnime = document.select("table.b-post__info tr:contains(Жанр:)").text().contains("Аниме", ignoreCase = true)
+        val type = when {
+            url.contains("/films/") -> TvType.Movie
+            isAnime -> TvType.Anime
+            else -> TvType.TvSeries
         }
 
-        val year = infoMap["Год"]?.filter { it.isDigit() }?.take(4)?.toIntOrNull()
-        val genres = infoMap["Жанр"]
-            ?.split(',', '·', '|')
-            ?.map { it.trim() }
-            ?.filter { it.isNotEmpty() }
-            ?: emptyList()
+    return when (type) {
+        TvType.Movie -> newMovieLoadResponse(title, url, type, url) { // тут dataUrl нужен
+            this.posterUrl = poster
+            this.year = year
+            this.plot = description
+    }
 
-        val looksLikeSeries = doc.selectFirst(".b-simple_season__nav, .b-simple_episode__item, .b-episodes__list") != null ||
-                url.contains("/series", ignoreCase = true) ||
-                url.contains("serial", ignoreCase = true)
+        TvType.Anime, TvType.TvSeries -> newTvSeriesLoadResponse(title, url, type, emptyList()) {
+            this.posterUrl = poster
+            this.year = year
+            this.plot = description
+    }
 
-        return if (!looksLikeSeries) {
-            newMovieLoadResponse(
-                name = title,
-                url = url,
-                type = TvType.Movie,
-                dataUrl = url
-            ).apply {
-                posterUrl = poster
-                this.plot = plot
-                this.year = year
-                this.tags = genres
-            }
-        } else {
-            val episodes = emptyList<Episode>()
-            newTvSeriesLoadResponse(
-                name = title,
-                url = url,
-                type = TvType.TvSeries,
-                episodes = episodes
-            ).apply {
-                posterUrl = poster
-                this.plot = plot
-                this.year = year
-                this.tags = genres
-            }
+            else -> null
         }
+
     }
 }
