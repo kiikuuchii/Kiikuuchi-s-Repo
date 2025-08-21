@@ -19,87 +19,59 @@ class Rezka : MainAPI() {
     override var mainUrl = "https://rezka-ua.org"
     override var name = "Rezka"
     override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries, TvType.Anime)
-    override val hasMainPage = false
-
-    private val tmdbApiKey = "eyJhbGciOiJIUzI1NiJ9.eyJhdWQiOiI4OTBhODY0YjliMGFiM2Q1ODE5YmMzNDI4OTZkNmRlNSIsIm5iZiI6MTc1NTUzODM5MS42MDksInN1YiI6IjY4YTM2M2Q3ZTM5ODkyY2Y5ODgwN2NkYyIsInNjb3BlcyI6WyJhcGlfcmVhZCJdLCJ2ZXJzaW9uIjoxfQ.BCAo_jgcK7RHHJoMxL8-EuH21FI3AwYDzBorB0KtJyA" // свой ключ TMDB
-    private val tmdbBase = "https://api.themoviedb.org/3"
-
-    private suspend fun getTmdbYear(query: String, type: TvType): Int? {
-        return try {
-            val searchType = if (type == TvType.Movie) "movie" else "tv"
-            val encoded = URLEncoder.encode(query, "UTF-8")
-            val url = "$tmdbBase/search/$searchType?api_key=$tmdbApiKey&language=ru-RU&query=$encoded"
-
-            val json = JSONObject(app.get(url).text)
-            val result = json.getJSONArray("results").optJSONObject(0) ?: return null
-
-            (result.optString("release_date")
-                ?: result.optString("first_air_date"))
-                ?.takeIf { it.isNotBlank() }
-                ?.substring(0, 4)
-                ?.toIntOrNull()
-        } catch (e: Exception) {
-            null
-        }
-    }
+    override var lang = "ru"
+    override val hasMainPage = true
 
     override suspend fun search(query: String): List<SearchResponse> {
         val url = "$mainUrl/index.php?do=search&subaction=search&q=$query"
         val doc = app.get(url).document
 
         return doc.select("div.b-content__inline_item").mapNotNull { element ->
-            val title = element.selectFirst("div.b-content__inline_item-link > a")?.text() ?: return@mapNotNull null
-            val link = element.selectFirst("div.b-content__inline_item-link > a")?.attr("href") ?: return@mapNotNull null
-            val posterRezka = element.selectFirst("img")?.attr("src") ?: ""
-
-            // Определяем тип
+            val title = element.selectFirst("div.b-content__inline_item-link a")?.text() ?: return@mapNotNull null
+            val link = element.selectFirst("div.b-content__inline_item-link a")?.attr("href") ?: return@mapNotNull null
+            val poster = element.selectFirst("div.b-content__inline_item-cover img")?.attr("src")
+            val quality = element.selectFirst("span.info")?.text()
             val type = when {
-                title.contains("аниме", true) -> TvType.Anime
-                title.contains("сериал", true) -> TvType.TvSeries
+                title.contains("аниме", ignoreCase = true) -> TvType.Anime
+                title.contains("сериал", ignoreCase = true) -> TvType.TvSeries
                 else -> TvType.Movie
             }
-
-            val year = getTmdbYear(title, type)
+            val year = element.selectFirst("div.b-content__inline_item-link div")?.ownText()?.toIntOrNull()
 
             newMovieSearchResponse(title, link, type) {
-                this.posterUrl = posterRezka.ifEmpty {
-                    "https://via.placeholder.com/300x450.png?text=No+Image"
-                }
+                this.posterUrl = poster
+                this.quality = getQualityFromString(quality)
                 this.year = year
             }
         }
     }
 
-    override suspend fun load(url: String): LoadResponse? {
+    override suspend fun load(url: String): LoadResponse {
         val doc = app.get(url).document
 
-        val title = doc.selectFirst("h1")?.text() ?: return null
+        val title = doc.selectFirst("h1")?.text() ?: "Без названия"
+        val poster = doc.selectFirst("div.b-sidecover img")?.attr("src")
         val description = doc.selectFirst("div.b-post__description_text")?.text()
-        val posterRezka = doc.selectFirst("div.b-sidecover img")?.attr("src") ?: ""
-        val yearRezka = doc.select("table.b-post__info tr").find {
-            it.text().contains("год", true)
-        }?.select("td.last")?.text()?.toIntOrNull()
+        val yearText = doc.select("table.b-post__info td:contains(год) + td").text()
+        val year = yearText.toIntOrNull()
 
         val type = when {
-            doc.text().contains("аниме", true) -> TvType.Anime
-            doc.text().contains("сериал", true) -> TvType.TvSeries
+            doc.select("table.b-post__info td:contains(жанр) + td").text().contains("аниме", ignoreCase = true) -> TvType.Anime
+            doc.select("table.b-post__info td:contains(жанр) + td").text().contains("сериал", ignoreCase = true) -> TvType.TvSeries
             else -> TvType.Movie
         }
 
-        val yearTmdb = getTmdbYear(title, type)
-
         return when (type) {
             TvType.Movie -> newMovieLoadResponse(title, url, type, url) {
-                this.posterUrl = posterRezka
-                this.year = yearTmdb ?: yearRezka
-                this.plot = description
+                posterUrl = poster
+                plot = description
+                this.year = year
             }
-            TvType.TvSeries, TvType.Anime -> newTvSeriesLoadResponse(title, url, type, emptyList()) {
-                this.posterUrl = posterRezka
-                this.year = yearTmdb ?: yearRezka
-                this.plot = description
+            else -> newTvSeriesLoadResponse(title, url, type, episodes = listOf()) {
+                posterUrl = poster
+                plot = description
+                this.year = year
             }
-            else -> null
         }
     }
 }
