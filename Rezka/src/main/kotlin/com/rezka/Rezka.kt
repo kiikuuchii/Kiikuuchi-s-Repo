@@ -14,7 +14,7 @@ import org.jsoup.Jsoup
 
 class Rezka : MainAPI() {
     override var name = "Rezka"
-    override var mainUrl = "https://rezka.ag"
+    override var mainUrl = "https://rezka-ua.org"
     override var lang = "ru"
     override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries)
 
