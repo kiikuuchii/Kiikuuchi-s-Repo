@@ -24,23 +24,22 @@ class Rezka : MainAPI() {
     private val tmdbApiKey = "eyJhbGciOiJIUzI1NiJ9.eyJhdWQiOiI4OTBhODY0YjliMGFiM2Q1ODE5YmMzNDI4OTZkNmRlNSIsIm5iZiI6MTc1NTUzODM5MS42MDksInN1YiI6IjY4YTM2M2Q3ZTM5ODkyY2Y5ODgwN2NkYyIsInNjb3BlcyI6WyJhcGlfcmVhZCJdLCJ2ZXJzaW9uIjoxfQ.BCAo_jgcK7RHHJoMxL8-EuH21FI3AwYDzBorB0KtJyA" // свой ключ TMDB
     private val tmdbBase = "https://api.themoviedb.org/3"
 
-    private suspend fun getTmdbData(query: String, type: TvType): Pair<String?, Int?> {
-        val searchType = if (type == TvType.Movie) "movie" else "tv"
-        val encoded = URLEncoder.encode(query, "UTF-8")
-        val url = "$tmdbBase/search/$searchType?api_key=$tmdbApiKey&language=ru-RU&query=$encoded"
+    private suspend fun getTmdbYear(query: String, type: TvType): Int? {
         return try {
+            val searchType = if (type == TvType.Movie) "movie" else "tv"
+            val encoded = URLEncoder.encode(query, "UTF-8")
+            val url = "$tmdbBase/search/$searchType?api_key=$tmdbApiKey&language=ru-RU&query=$encoded"
+
             val json = JSONObject(app.get(url).text)
-            val result = json.getJSONArray("results").optJSONObject(0) ?: return null to null
-            val backdrop = result.optString("backdrop_path")?.takeIf { it.isNotBlank() }
-            val year = (result.optString("release_date")
+            val result = json.getJSONArray("results").optJSONObject(0) ?: return null
+
+            (result.optString("release_date")
                 ?: result.optString("first_air_date"))
-                .takeIf { it.isNotBlank() }
+                ?.takeIf { it.isNotBlank() }
                 ?.substring(0, 4)
                 ?.toIntOrNull()
-            val fullPoster = backdrop?.let { "https://image.tmdb.org/t/p/w780$it" }
-            fullPoster to year
         } catch (e: Exception) {
-            null to null
+            null
         }
     }
 
@@ -53,21 +52,20 @@ class Rezka : MainAPI() {
             val link = element.selectFirst("div.b-content__inline_item-link > a")?.attr("href") ?: return@mapNotNull null
             val posterRezka = element.selectFirst("img")?.attr("src") ?: ""
 
+            // Определяем тип
             val type = when {
                 title.contains("аниме", true) -> TvType.Anime
                 title.contains("сериал", true) -> TvType.TvSeries
                 else -> TvType.Movie
             }
 
-            val (tmdbPoster, tmdbYear) = getTmdbData(title, type)
-
-            val finalPoster = tmdbPoster ?: posterRezka.ifEmpty {
-                "https://via.placeholder.com/300x450.png?text=No+Image"
-            }
+            val year = getTmdbYear(title, type)
 
             newMovieSearchResponse(title, link, type) {
-                this.posterUrl = finalPoster
-                this.year = tmdbYear
+                this.posterUrl = posterRezka.ifEmpty {
+                    "https://via.placeholder.com/300x450.png?text=No+Image"
+                }
+                this.year = year
             }
         }
     }
@@ -88,21 +86,17 @@ class Rezka : MainAPI() {
             else -> TvType.Movie
         }
 
-        val (tmdbPoster, tmdbYear) = getTmdbData(title, type)
-
-        val finalPoster = tmdbPoster ?: posterRezka.ifEmpty {
-            "https://via.placeholder.com/300x450.png?text=No+Image"
-        }
+        val yearTmdb = getTmdbYear(title, type)
 
         return when (type) {
             TvType.Movie -> newMovieLoadResponse(title, url, type, url) {
-                this.posterUrl = finalPoster
-                this.year = tmdbYear ?: yearRezka
+                this.posterUrl = posterRezka
+                this.year = yearTmdb ?: yearRezka
                 this.plot = description
             }
             TvType.TvSeries, TvType.Anime -> newTvSeriesLoadResponse(title, url, type, emptyList()) {
-                this.posterUrl = finalPoster
-                this.year = tmdbYear ?: yearRezka
+                this.posterUrl = posterRezka
+                this.year = yearTmdb ?: yearRezka
                 this.plot = description
             }
             else -> null
