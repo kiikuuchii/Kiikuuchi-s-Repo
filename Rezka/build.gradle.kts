@@ -1,7 +1,7 @@
 cloudstream {
-    authors     = listOf("YourName")
+    authors     = listOf("kiikuuchii")
     language    = "ru"
-    description = "Rezka provider"
+    description = "Rezka Provider for Cloudstream"
     status      = 1
     version     = 451
 
@@ -9,3 +9,4 @@ cloudstream {
     
 	isCrossPlatform = true
 }
+
