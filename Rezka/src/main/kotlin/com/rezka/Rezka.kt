@@ -23,28 +23,24 @@ class Rezka : MainAPI() {
     override val hasMainPage = true
 
     override suspend fun search(query: String): List<SearchResponse> {
-        val url = "$mainUrl/index.php?do=search&subaction=search&q=$query"
-        val doc = app.get(url).document
+    val url = "$mainUrl/index.php?do=search&subaction=search&q=$query"
+    val response = app.get(url).text
+    println("SEARCH DEBUG: $response") // временно для проверки
+    val doc = Jsoup.parse(response)
 
-        return doc.select("div.b-content__inline_item").mapNotNull { element ->
-            val title = element.selectFirst("div.b-content__inline_item-link a")?.text() ?: return@mapNotNull null
-            val link = element.selectFirst("div.b-content__inline_item-link a")?.attr("href") ?: return@mapNotNull null
-            val poster = element.selectFirst("div.b-content__inline_item-cover img")?.attr("src")
-            val quality = element.selectFirst("span.info")?.text()
-            val type = when {
-                title.contains("аниме", ignoreCase = true) -> TvType.Anime
-                title.contains("сериал", ignoreCase = true) -> TvType.TvSeries
-                else -> TvType.Movie
-            }
-            val year = element.selectFirst("div.b-content__inline_item-link div")?.ownText()?.toIntOrNull()
+    val results = doc.select("div.b-content__inline_item")
+    println("FOUND ELEMENTS: ${results.size}")
 
-            newMovieSearchResponse(title, link, type) {
-                this.posterUrl = poster
-                this.quality = getQualityFromString(quality)
-                this.year = year
+    return results.mapNotNull { element ->
+        val title = element.selectFirst("div.b-content__inline_item-link a")?.text()
+        val link = element.selectFirst("div.b-content__inline_item-link a")?.attr("href")
+        if (title != null && link != null) {
+            newMovieSearchResponse(title, link, TvType.Movie) {
+                this.posterUrl = element.selectFirst("div.b-content__inline_item-cover img")?.attr("src")
             }
-        }
+        } else null
     }
+}
 
     override suspend fun load(url: String): LoadResponse {
         val doc = app.get(url).document
