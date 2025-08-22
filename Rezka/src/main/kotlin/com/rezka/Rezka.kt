@@ -20,6 +20,8 @@ class Rezka : MainAPI() {
     override var lang = "ru"
     override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries, TvType.Anime)
 
+    override val hasMainPage = true
+
     override suspend fun search(query: String): List<SearchResponse> {
         val url = "$mainUrl/search/?do=search&subaction=search&q=$query"
         val doc = app.get(url).document
