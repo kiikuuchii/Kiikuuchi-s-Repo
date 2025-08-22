@@ -50,69 +50,73 @@ class Rezka : MainAPI() {
     }
 }
 
-    override suspend fun load(url: String): LoadResponse? {
-    val doc = app.get(url).document
+    override suspend fun load(url: String): LoadResponse {
+    val document = app.get(url).document
 
-    val title = doc.selectFirst("div.b-post__title h1")?.text() ?: return null
-    val poster = doc.selectFirst("div.b-sidecover img")?.attr("src")
-    val fullPlot = doc.selectFirst("div.b-post__description_text")?.text()
+    val title = document.selectFirst("div.b-post__title h1")?.text()?.trim()
+        ?: throw ErrorLoadingException("Не удалось найти заголовок")
 
-    // таблица с инфой
-    val infoTable = doc.select("table.b-post__info tr")
+    val poster = document.selectFirst("div.b-sidecover img")?.attr("src")
+    val plot = document.selectFirst("div.b-post__description_text")?.text()?.trim()
+
+    val infoTable = document.selectFirst("table.b-post__info")
+
     var year: Int? = null
-    var genres: List<String>? = null
     var country: String? = null
-    var director: String? = null
-    var actors: String? = null
+    var genres: List<String>? = null
+    val actors = mutableListOf<ActorData>()
 
-    for (row in infoTable) {
-        val key = row.selectFirst("td.l")?.text()?.trim() ?: continue
-        val value = row.selectFirst("td.r")?.text()?.trim() ?: continue
+    infoTable?.select("tr")?.forEach { row ->
+        val key = row.selectFirst("td.l")?.text()?.trim() ?: return@forEach
+        val valueCell = row.selectFirst("td:not(.l)")
 
         when {
-            key.contains("Год", ignoreCase = true) -> year = value.toIntOrNull()
-            key.contains("Жанр", ignoreCase = true) -> genres = value.split(",").map { it.trim() }
-            key.contains("Страна", ignoreCase = true) -> country = value
-            key.contains("Режиссер", ignoreCase = true) -> director = value
-            key.contains("В ролях", ignoreCase = true) -> actors = value
+            key.contains("Год", true) -> {
+                year = valueCell?.text()?.trim()?.toIntOrNull()
+            }
+            key.contains("Жанр", true) -> {
+                genres = valueCell?.select("a")?.map { it.text() }
+            }
+            key.contains("Страна", true) -> {
+                country = valueCell?.text()?.trim()
+            }
+            key.contains("Режиссер", true) -> {
+                valueCell?.select("a")?.forEach {
+                    actors.add(ActorData(Actor(it.text())))
+                }
+            }
+            key.contains("В ролях", true) -> {
+                valueCell?.select("a")?.forEach {
+                    actors.add(ActorData(Actor(it.text())))
+                }
+            }
         }
     }
 
-    // режиссёр как ActorData
-    val directorActor = director?.let { listOf(ActorData(Actor(it, null))) } ?: emptyList()
+    val isTvSeries = document.select("ul#simple-episodes-tabs").isNotEmpty()
 
-    // актёры
-    val actorList = actors?.split(",")?.map {
-        ActorData(Actor(it.trim(), null))
-    } ?: emptyList()
-
-    val allActors = directorActor + actorList
-
-    // определяем тип
-    val type = when {
-        url.contains("/series/") -> TvType.TvSeries
-        url.contains("/animation/") -> TvType.Anime
-        else -> TvType.Movie
-    }
-
-    return when (type) {
-        TvType.Movie -> newMovieLoadResponse(title, url, type, url) {
+    return if (isTvSeries) {
+        newTvSeriesLoadResponse(title, url, TvType.TvSeries, emptyList()) {
             this.posterUrl = poster
+            this.plot = plot
             this.year = year
-            this.plot = fullPlot
-            this.tags = genres?.plus(country ?: "")
-            this.actors = allActors
+            this.tags = buildList {
+                genres?.let { addAll(it) }
+                country?.let { add(it) }
+            }
+            this.actors = actors
         }
-
-        TvType.Anime, TvType.TvSeries -> newTvSeriesLoadResponse(title, url, type, emptyList()) {
+    } else {
+        newMovieLoadResponse(title, url, TvType.Movie, url) {
             this.posterUrl = poster
+            this.plot = plot
             this.year = year
-            this.plot = fullPlot
-            this.tags = genres?.plus(country ?: "")
-            this.actors = allActors
+            this.tags = buildList {
+                genres?.let { addAll(it) }
+                country?.let { add(it) }
+            }
+            this.actors = actors
         }
-
-        else -> null
     }
 }
 }
