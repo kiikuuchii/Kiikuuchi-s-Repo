@@ -25,23 +25,30 @@ class Rezka : MainAPI() {
 
     // 🔍 Поиск
     override suspend fun search(query: String): List<SearchResponse> {
-        val url = "$mainUrl/index.php?do=search&subaction=search&q=$query"
-        val document = app.get(url).document
+    val url = "$mainUrl/index.php?do=search&subaction=search&q=$query"
+    val document = app.get(url).document
 
-        return document.select("div.b-content__inline_item").mapNotNull { element ->
-            val title = element.selectFirst("div.b-content__inline_item-link a")?.text() ?: return@mapNotNull null
-            val href = element.selectFirst("div.b-content__inline_item-link a")?.attr("href") ?: return@mapNotNull null
-            val poster = element.selectFirst("div.b-content__inline_item-cover img")?.attr("src")
-            val quality = element.selectFirst("div.b-content__inline_item-cover span.cat")?.text()
-            val type = when {
-                quality?.contains("аниме", true) == true -> TvType.Anime
-                else -> TvType.Movie
-            }
-            newMovieSearchResponse(title, href, type) {
-                this.posterUrl = poster
-            }
+    val items = document.select("div.b-content__inline_item, div.b-content__inline_items div.b-content__inline_item")
+
+    return items.mapNotNull { element ->
+        val linkElem = element.selectFirst("div.b-content__inline_item-link a") ?: return@mapNotNull null
+        val title = linkElem.text()
+        val href = linkElem.attr("href")
+        val poster = element.selectFirst("div.b-content__inline_item-cover img")?.attr("src")
+        val quality = element.selectFirst("div.b-content__inline_item-cover span.cat")?.text()
+
+        val type = when {
+            quality?.contains("аниме", true) == true -> TvType.Anime
+            element.text().contains("сериал", true) -> TvType.TvSeries
+            else -> TvType.Movie
+        }
+
+        newMovieSearchResponse(title, href, type) {
+            this.posterUrl = poster
         }
     }
+}
+
 
     // 📄 Загрузка страницы фильма/сериала
     override suspend fun load(url: String): LoadResponse? {
