@@ -21,8 +21,9 @@ cloudstream {
     // List of video source types. Users are able to filter for extensions in a given category.
     // You can find a list of available types here:
     // https://recloudstream.github.io/cloudstream/html/app/com.lagradost.cloudstream3/-tv-type/index.html
-    tvTypes = listOf("Movie","TvSeries")
+    tvTypes = listOf("Movie","TvSeries","Anime")
     iconUrl = "https://raw.githubusercontent.com/phisher98/TVVVV/refs/heads/main/Icons/Coflix.png"
 
     isCrossPlatform = true
+
 }
