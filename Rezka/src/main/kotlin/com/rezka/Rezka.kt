@@ -50,38 +50,69 @@ class Rezka : MainAPI() {
     }
 }
 
-
-    // 📄 Загрузка страницы фильма/сериала
     override suspend fun load(url: String): LoadResponse? {
-        val document = app.get(url).document
+    val doc = app.get(url).document
 
-        val title = document.selectFirst("div.b-post__title h1")?.text() ?: return null
-        val poster = document.selectFirst("div.b-sidecover img")?.attr("src")
-        val description = document.selectFirst("div.b-post__description_text")?.text()
-        val year = document.select("table.b-post__info tr:contains(Год:) td").text().toIntOrNull()
+    val title = doc.selectFirst("div.b-post__title h1")?.text() ?: return null
+    val poster = doc.selectFirst("div.b-sidecover img")?.attr("src")
+    val fullPlot = doc.selectFirst("div.b-post__description_text")?.text()
 
-        // Определение типа
-        val isAnime = document.select("table.b-post__info tr:contains(Жанр:)").text().contains("Аниме", ignoreCase = true)
-        val type = when {
-            url.contains("/films/") -> TvType.Movie
-            isAnime -> TvType.Anime
-            else -> TvType.TvSeries
+    // таблица с инфой
+    val infoTable = doc.select("table.b-post__info tr")
+    var year: Int? = null
+    var genres: List<String>? = null
+    var country: String? = null
+    var director: String? = null
+    var actors: String? = null
+
+    for (row in infoTable) {
+        val key = row.selectFirst("td.l")?.text()?.trim() ?: continue
+        val value = row.selectFirst("td.r")?.text()?.trim() ?: continue
+
+        when {
+            key.contains("Год", ignoreCase = true) -> year = value.toIntOrNull()
+            key.contains("Жанр", ignoreCase = true) -> genres = value.split(",").map { it.trim() }
+            key.contains("Страна", ignoreCase = true) -> country = value
+            key.contains("Режиссер", ignoreCase = true) -> director = value
+            key.contains("В ролях", ignoreCase = true) -> actors = value
         }
+    }
 
-            return when (type) {
-        TvType.Movie -> newMovieLoadResponse(title, url, type, url) { // тут dataUrl нужен
+    // режиссёр как ActorData
+    val directorActor = director?.let { listOf(ActorData(Actor(it, null))) } ?: emptyList()
+
+    // актёры
+    val actorList = actors?.split(",")?.map {
+        ActorData(Actor(it.trim(), null))
+    } ?: emptyList()
+
+    val allActors = directorActor + actorList
+
+    // определяем тип
+    val type = when {
+        url.contains("/series/") -> TvType.TvSeries
+        url.contains("/animation/") -> TvType.Anime
+        else -> TvType.Movie
+    }
+
+    return when (type) {
+        TvType.Movie -> newMovieLoadResponse(title, url, type, url) {
             this.posterUrl = poster
             this.year = year
-            this.plot = description
+            this.plot = fullPlot
+            this.tags = genres?.plus(country ?: "")
+            this.actors = allActors
         }
 
         TvType.Anime, TvType.TvSeries -> newTvSeriesLoadResponse(title, url, type, emptyList()) {
             this.posterUrl = poster
             this.year = year
-            this.plot = description
+            this.plot = fullPlot
+            this.tags = genres?.plus(country ?: "")
+            this.actors = allActors
         }
 
-          else -> null
-       }
+        else -> null
     }
+}
 }
