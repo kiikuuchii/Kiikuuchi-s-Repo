@@ -25,22 +25,34 @@ class Rezka : MainAPI() {
     override suspend fun search(query: String): List<SearchResponse> {
     val url = "$mainUrl/index.php?do=search&subaction=search&q=$query"
     val response = app.get(url).text
-    println("SEARCH DEBUG: $response") // временно для проверки
     val doc = Jsoup.parse(response)
 
-    val results = doc.select("div.b-content__inline_item")
-    println("FOUND ELEMENTS: ${results.size}")
+    // У Rezka разные блоки для выдачи: бывает _item, бывает просто inline
+    val results = doc.select("div.b-content__inline_item, div.b-content__inline")
 
     return results.mapNotNull { element ->
-        val title = element.selectFirst("div.b-content__inline_item-link a")?.text()
-        val link = element.selectFirst("div.b-content__inline_item-link a")?.attr("href")
+        val linkElement = element.selectFirst("div.b-content__inline_item-link a, div.b-content__inline a")
+        val title = linkElement?.text()?.trim()
+        val link = linkElement?.attr("href")
+
+        val poster = element.selectFirst("div.b-content__inline_item-cover img, div.b-content__inline_cover img")?.attr("src")
+
         if (title != null && link != null) {
-            newMovieSearchResponse(title, link, TvType.Movie) {
-                this.posterUrl = element.selectFirst("div.b-content__inline_item-cover img")?.attr("src")
+            // Определяем тип: сериал/аниме/фильм
+            val typeText = element.selectFirst("div.b-content__inline_item-link span, div.b-content__inline_cat")?.text()?.lowercase()
+            val type = when {
+                typeText?.contains("сериал") == true -> TvType.TvSeries
+                typeText?.contains("аниме") == true -> TvType.Anime
+                else -> TvType.Movie
+            }
+
+            newMovieSearchResponse(title, link, type) {
+                this.posterUrl = poster
             }
         } else null
     }
 }
+
 
     override suspend fun load(url: String): LoadResponse {
         val doc = app.get(url).document
