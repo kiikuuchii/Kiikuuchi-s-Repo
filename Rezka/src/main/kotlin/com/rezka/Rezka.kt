@@ -50,63 +50,54 @@ class Rezka : MainAPI() {
     }
 }
 
-    override suspend fun load(url: String): LoadResponse? {
+override suspend fun load(url: String): LoadResponse? {
     val doc = app.get(url).document
 
-    val title = doc.selectFirst(".b-post__title h1")?.text()?.trim() ?: return null
-    val posterUrl = doc.selectFirst(".b-sidecover img")?.attr("src")
-    val description = doc.selectFirst(".b-post__description_text")?.text()?.trim()
+    val title = doc.selectFirst("h1")?.text()?.trim().orEmpty()
+    val posterUrl = doc.selectFirst(".b-post__infopic img")?.absUrl("src")
+    val description = doc.selectFirst("div.b-post__description")?.text()?.trim()
 
-    var year: Int? = null
-    val genres = mutableListOf<String>()
-    val countries = mutableListOf<String>()
-    val actors = mutableListOf<ActorData>()
+    // жанры и страна
+    val genres = doc.select("table.b-post__info td:matchesOwn(Жанр) ~ td a")
+        .map { it.text().trim() }
+    val countries = doc.select("table.b-post__info td:matchesOwn(Страна) ~ td a")
+        .map { it.text().trim() }
 
-    doc.select("table.b-post__info tr").forEach { tr ->
-        val key = (tr.selectFirst("td:nth-child(1)") ?: tr.selectFirst("th"))?.text()?.trim().orEmpty()
-        val valueCell = tr.selectFirst("td:nth-child(2)") ?: tr.selectFirst("td")
-        when {
-            key.contains("Год", true) -> {
-                year = valueCell?.text()?.let { Regex("(19|20)\\d{2}").find(it)?.value?.toIntOrNull() }
-            }
-            key.contains("Жанр", true) -> {
-                valueCell?.select("a")?.forEach { a ->
-                    val g = a.text().trim()
-                    if (g.isNotEmpty()) genres.add(g)
-                }
-            }
-            key.contains("Страна", true) -> {
-                valueCell?.select("a")?.forEach { a ->
-                    val c = a.text().trim()
-                    if (c.isNotEmpty()) countries.add(c)
-                }
-            }
-            key.contains("Режиссер", true) -> {
-                valueCell?.select("a")?.forEach { a ->
-                    val n = a.text().trim()
-                    if (n.isNotEmpty()) actors.add(ActorData(Actor(n), role = null))
-                }
-            }
-            key.contains("В ролях", true) -> {
-                valueCell?.select("a")?.forEach { a ->
-                    val n = a.text().trim()
-                    if (n.isNotEmpty()) actors.add(ActorData(Actor(n), role = null))
-                }
-            }
-        }
+    // год
+    val year = doc.select("table.b-post__info td:matchesOwn(год) ~ td a")
+        .text()
+        .toIntOrNull()
+
+    // режиссеры
+    val directors = doc.select("table.b-post__info td:matchesOwn(Режиссер) ~ td a")
+    .map { link ->
+        ActorData(
+            Actor(
+                name = link.text().trim(),
+                image = null
+            ),
+            roleString = "Режиссёр"
+        )
     }
 
-    // --- Доп. проверка: если год всё ещё null, пробуем вытащить из заголовка (обычно "Название (2023)")
-    if (year == null) {
-        val titleH2 = doc.selectFirst(".b-post__title h2")?.text().orEmpty()
-        year = Regex("(19|20)\\d{2}").find(titleH2)?.value?.toIntOrNull()
+    // актеры
+    val actors = doc.select("table.b-post__info td:matchesOwn(В ролях актеры) ~ td a")
+    .map { link ->
+        ActorData(
+            Actor(
+                name = link.text().trim(),
+                image = null
+            ),
+            roleString = "Актёр"
+        )
     }
 
+    // определяем тип
     val isAnime = genres.any { it.contains("аниме", true) } || url.contains("/anime", true)
-    val isSeries = doc.select("#simple-episodes-list, .b-simple_episode__list, .b-simple_episodes__list").isNotEmpty()
+    val isSeries = !isAnime && doc.select("#simple-episodes-list, .b-simple_episode__list, .b-simple_episodes__list").isNotEmpty()
 
     val type = when {
-        isAnime -> TvType.Anime   // приоритет за аниме
+        isAnime -> TvType.Anime
         isSeries -> TvType.TvSeries
         else -> TvType.Movie
     }
@@ -117,28 +108,52 @@ class Rezka : MainAPI() {
             this.year = year
             this.plot = description
             this.tags = (genres + countries).ifEmpty { null }
-            this.actors = actors.ifEmpty { null }
+            this.actors = (directors + actors).ifEmpty { null }
         }
 
-        TvType.TvSeries, TvType.Anime -> {
+        TvType.TvSeries -> {
             val eps = mutableListOf<Episode>()
-            doc.select("#simple-episodes-list a, .b-simple_episode__list a, .b-simple_episodes__list a").forEachIndexed { idx, a ->
-                val epName = a.text().trim()
-                val epLink = a.absUrl("href").ifEmpty { url }
-                eps.add(
-                    newEpisode(epLink) {
-                        this.name = if (epName.isNotEmpty()) epName else "Эпизод ${idx + 1}"
-                        this.episode = idx + 1
-                    }
-                )
-            }
+            doc.select("#simple-episodes-list a, .b-simple_episode__list a, .b-simple_episodes__list a")
+                .forEachIndexed { idx, a ->
+                    val epName = a.text().trim()
+                    val epLink = a.absUrl("href").ifEmpty { url }
+                    eps.add(
+                        newEpisode(epLink) {
+                            this.name = if (epName.isNotEmpty()) epName else "Эпизод ${idx + 1}"
+                            this.episode = idx + 1
+                        }
+                    )
+                }
 
-            newTvSeriesLoadResponse(title, url, type, episodes = eps) {
+            newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes = eps) {
                 this.posterUrl = posterUrl
                 this.year = year
                 this.plot = description
                 this.tags = (genres + countries).ifEmpty { null }
-                this.actors = actors.ifEmpty { null }
+                this.actors = (directors + actors).ifEmpty { null }
+            }
+        }
+
+        TvType.Anime -> {
+            val eps = mutableListOf<Episode>()
+            doc.select("#simple-episodes-list a, .b-simple_episode__list a, .b-simple_episodes__list a")
+                .forEachIndexed { idx, a ->
+                    val epName = a.text().trim()
+                    val epLink = a.absUrl("href").ifEmpty { url }
+                    eps.add(
+                        newEpisode(epLink) {
+                            this.name = if (epName.isNotEmpty()) epName else "Эпизод ${idx + 1}"
+                            this.episode = idx + 1
+                        }
+                    )
+                }
+
+            newTvSeriesLoadResponse(title, url, TvType.Anime, episodes = eps) {
+                this.posterUrl = posterUrl
+                this.year = year
+                this.plot = description
+                this.tags = (genres + countries).ifEmpty { null }
+                this.actors = (directors + actors).ifEmpty { null }
             }
         }
 
