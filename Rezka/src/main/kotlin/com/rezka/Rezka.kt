@@ -31,16 +31,23 @@ override suspend fun search(query: String): List<SearchResponse> {
             val year = element.selectFirst(".b-content__inline_item-link > div")
                 ?.text()?.toIntOrNull()
 
-            // Определяем тип: если ссылка ведет на /anime/, то это аниме
+            // Определяем тип
             val type = when {
                 href.contains("/anime/") -> TvType.Anime
                 href.contains("/series/") -> TvType.TvSeries
                 else -> TvType.Movie
             }
 
-            newMovieSearchResponse(title, href, type) {
-                this.posterUrl = poster
-                this.year = year
+            if (type == TvType.Anime || type == TvType.TvSeries) {
+                newTvSeriesSearchResponse(title, href, type) {
+                    this.posterUrl = poster
+                    this.year = year
+                }
+            } else {
+                newMovieSearchResponse(title, href, type) {
+                    this.posterUrl = poster
+                    this.year = year
+                }
             }
         }
     }
@@ -54,15 +61,12 @@ override suspend fun search(query: String): List<SearchResponse> {
             ?.text()?.filter { it.isDigit() }?.toIntOrNull()
         val description = doc.selectFirst(".b-post__description_text")?.text()
 
-        val actors = doc.select(".b-post__info a[href*=/actor/]").map {
-            ActorData(Actor(it.text()))
-        }
-
         // Определяем тип
         val isAnime = url.contains("/anime/")
-        val isSeries = url.contains("/series/") || isAnime
+        val hasEpisodes = doc.select(".b-simple_episode__item").isNotEmpty()
 
-        return if (isSeries) {
+        return if (hasEpisodes) {
+            // Сериал или аниме-сериал
             val episodes = doc.select(".b-simple_episode__item").mapIndexed { index, el ->
                 val name = el.selectFirst(".b-simple_episode__item-title")?.text()
                 val href = el.selectFirst("a")?.attr("href") ?: url
@@ -81,14 +85,18 @@ override suspend fun search(query: String): List<SearchResponse> {
                 this.posterUrl = poster
                 this.year = year
                 this.plot = description
-                this.actors = actors
             }
         } else {
-            newMovieLoadResponse(title, url, TvType.Movie, url) {
+            // Фильм или аниме-фильм
+            newMovieLoadResponse(
+                title,
+                url,
+                if (isAnime) TvType.Anime else TvType.Movie,
+                url
+            ) {
                 this.posterUrl = poster
                 this.year = year
                 this.plot = description
-                this.actors = actors
             }
         }
     }
