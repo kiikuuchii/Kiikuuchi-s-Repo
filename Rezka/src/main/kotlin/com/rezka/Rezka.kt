@@ -21,31 +21,29 @@ class Rezka : MainAPI() {
     override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries, TvType.Anime)
 
 override suspend fun search(query: String): List<SearchResponse> {
-    val url = "$mainUrl/search/?do=search&subaction=search&q=$query"
-    val response = app.get(url, headers = mapOf("User-Agent" to "Mozilla/5.0"))
-    val document = response.document
+        val url = "$mainUrl/search/?do=search&subaction=search&q=$query"
+        val doc = app.get(url).document
 
-    val items = document.select("div.b-content__inline_item")
-    if (items.isEmpty()) {
-        println("Rezka search: ничего не найдено. Возможно изменилась разметка.")
-    }
+        return doc.select(".b-content__inline_item").map { element ->
+            val href = element.selectFirst("a")!!.attr("href")
+            val title = element.selectFirst(".b-content__inline_item-link")!!.text()
+            val poster = element.selectFirst("img")!!.attr("src")
+            val year = element.selectFirst(".b-content__inline_item-link > div")
+                ?.text()?.toIntOrNull()
 
-    return items.mapNotNull { element ->
-        val title = element.selectFirst(".b-content__inline_item-link a")?.text() ?: return@mapNotNull null
-        val href = element.attr("data-url") ?: return@mapNotNull null
-        val poster = element.selectFirst("img")?.attr("src")
+            // Определяем тип: если ссылка ведет на /anime/, то это аниме
+            val type = when {
+                href.contains("/anime/") -> TvType.Anime
+                href.contains("/series/") -> TvType.TvSeries
+                else -> TvType.Movie
+            }
 
-        val type = when {
-            href.contains("/animation/") -> TvType.Anime
-            href.contains("/series/") -> TvType.TvSeries
-            else -> TvType.Movie
+            newMovieSearchResponse(title, href, type) {
+                this.posterUrl = poster
+                this.year = year
+            }
         }
-
-        newMovieSearchResponse(title, href, type) {
-            this.posterUrl = poster
-        }
     }
-}
 
     override suspend fun load(url: String): LoadResponse {
         val doc = app.get(url).document
