@@ -75,18 +75,11 @@ class Rezka : MainAPI() {
 
     // Определяем тип
     val isAnime = url.contains("/anime/")
-    val isCartoon = url.contains("/cartoons/")
+    val isCartoon = url.contains("/cartoon/") || url.contains("multfilm")
     val hasEpisodes = doc.select(".b-simple_episode__item").isNotEmpty()
 
-    val type = when {
-        isAnime -> TvType.Anime
-        isCartoon -> TvType.Cartoon
-        url.contains("/series/") -> TvType.TvSeries
-        else -> TvType.Movie
-    }
-
     return if (hasEpisodes) {
-        // Сериал или аниме-сериал
+        // сериал (аниме или обычный)
         val episodes = doc.select(".b-simple_episode__item").mapIndexed { index, el ->
             val name = el.selectFirst(".b-simple_episode__item-title")?.text()
             val href = el.selectFirst("a")?.attr("href") ?: url
@@ -99,7 +92,11 @@ class Rezka : MainAPI() {
         newTvSeriesLoadResponse(
             title,
             url,
-            type,   // <- здесь TvType
+            when {
+                isAnime -> TvType.Anime
+                isCartoon -> TvType.Cartoon
+                else -> TvType.TvSeries
+            },
             episodes
         ) {
             this.posterUrl = poster
@@ -107,12 +104,16 @@ class Rezka : MainAPI() {
             this.plot = description
         }
     } else {
-        // Фильм, мультфильм или аниме-фильм
+        // фильм (сюда попадут и аниме-фильмы, и мультфильмы, и обычные фильмы)
         newMovieLoadResponse(
             title,
             url,
-            type,   // <- здесь TvType
-            url     // <- dataUrl (может быть тот же url)
+            when {
+                isAnime -> TvType.Anime
+                isCartoon -> TvType.Cartoon
+                else -> TvType.Movie
+            },
+            url
         ) {
             this.posterUrl = poster
             this.year = year
@@ -120,6 +121,7 @@ class Rezka : MainAPI() {
         }
     }
 }
+
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
         // реализовано в RezkaMain.kt (extension-функция)
