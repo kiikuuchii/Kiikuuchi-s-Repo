@@ -5,48 +5,36 @@ import com.lagradost.cloudstream3.utils.*
 
 
     suspend fun MainAPI.loadRezkaMainPage(page: Int): HomePageResponse {
-    val url = "https://rezka-ua.org/?filter=watching"
-    val doc = app.get(url).document
-
-    val films = mutableListOf<SearchResponse>()
-    val series = mutableListOf<SearchResponse>()
-    val cartoons = mutableListOf<SearchResponse>()
-    val anime = mutableListOf<SearchResponse>()
-
-    doc.select(".b-content__inline_item").forEach { element ->
-        val href = element.selectFirst("a")?.attr("href") ?: return@forEach
-        val title = element.selectFirst(".b-content__inline_item-link")?.text() ?: return@forEach
-        val poster = element.selectFirst("img")?.attr("src")
-        val year = element.selectFirst(".b-content__inline_item-link > div")?.text()?.toIntOrNull()
-
-        val type = when {
-            href.contains("/films/") -> TvType.Movie
-            href.contains("/series/") -> TvType.TvSeries
-            href.contains("/cartoons/") -> TvType.Cartoon
-            href.contains("/anime/") -> TvType.Anime
-            else -> TvType.Movie
-        }
-
-        val item = newMovieSearchResponse(title, href, type) {
-            this.posterUrl = poster
-            this.year = year
-        }
-
-        when (type) {
-            TvType.Movie -> films.add(item)
-            TvType.TvSeries -> series.add(item)
-            TvType.Cartoon -> cartoons.add(item)
-            TvType.Anime -> anime.add(item)
-            else -> {}
-        }
-    }
+    val categories = listOf(
+        "🎬 Фильмы" to "$mainUrl/page/$page/?filter=watching&genre=1",
+        "📺 Сериалы" to "$mainUrl/page/$page/?filter=watching&genre=2",
+        "🎞️ Мультфильмы" to "$mainUrl/page/$page/?filter=watching&genre=3",
+        "🍥 Аниме" to "$mainUrl/page/$page/?filter=watching&genre=82",
+    )
 
     return newHomePageResponse(
-        listOf(
-            HomePageList("🎬 Фильмы", films),
-            HomePageList("📺 Сериалы", series),
-            HomePageList("🎞️ Мультфильмы", cartoons),
-            HomePageList("🍥 Аниме", anime)
-        )
+        categories.map { (title, url) ->
+            val doc = app.get(url).document
+            val items = doc.select(".b-content__inline_item").mapNotNull { element ->
+                val href = element.selectFirst("a")?.attr("href") ?: return@mapNotNull null
+                val name = element.selectFirst(".b-content__inline_item-link")?.text() ?: return@mapNotNull null
+                val poster = element.selectFirst("img")?.attr("src")
+                val year = element.selectFirst(".b-content__inline_item-link > div")?.text()?.toIntOrNull()
+
+                val type = when (title) {
+                    "🎬 Фильмы" -> TvType.Movie
+                    "📺 Сериалы" -> TvType.TvSeries
+                    "🎞️ Мультфильмы" -> TvType.Cartoon
+                    "🍥 Аниме" -> TvType.Anime
+                    else -> TvType.Movie
+                }
+
+                newMovieSearchResponse(name, href, type) {
+                    this.posterUrl = poster
+                    this.year = year
+                }
+            }
+            HomePageList(title, items)
+        }
     )
 }
