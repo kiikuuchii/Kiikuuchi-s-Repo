@@ -6,111 +6,129 @@ import com.lagradost.cloudstream3.MainAPI
 import com.lagradost.cloudstream3.TvType
 import com.lagradost.cloudstream3.SearchResponse
 import com.lagradost.cloudstream3.LoadResponse
-import com.lagradost.cloudstream3.utils.AppUtils
-import com.lagradost.cloudstream3.utils.loadExtractor
-import com.lagradost.cloudstream3.utils.ExtractorLink
-import com.lagradost.cloudstream3.SubtitleFile
-import com.lagradost.cloudstream3.LoadResponse.Companion.addActors
-import org.jsoup.nodes.Document
 import com.rezka.loadRezkaMainPage
-import com.lagradost.cloudstream3.DubStatus
-import java.net.URLEncoder
-import java.nio.charset.StandardCharsets
 import org.jsoup.Jsoup
 
 class Rezka : MainAPI() {
-    override var mainUrl = "https://rezka.ag"
+    override var mainUrl = "https://rezka-ua.org"
     override var name = "Rezka"
-    override val hasMainPage = false
     override var lang = "ru"
-    override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries, TvType.Cartoon, TvType.Anime)
+    override val hasMainPage = true
 
-    private val tmdbApiKey = "890a864b9b0ab3d5819bc342896d6de5"
-    private val tmdbApi = "https://api.themoviedb.org/3"
+    // добавил Cartoon и OVA в список поддерживаемых типов
+    override val supportedTypes =
+        setOf(TvType.Movie, TvType.TvSeries, TvType.Anime, TvType.Cartoon, TvType.OVA)
 
-    // =============== SEARCH ==================
     override suspend fun search(query: String): List<SearchResponse> {
-        val encoded = URLEncoder.encode(query, StandardCharsets.UTF_8.toString())
-        val url = "$tmdbApi/search/multi?api_key=$tmdbApiKey&language=ru&query=$encoded"
+        val url = "$mainUrl/search/?do=search&subaction=search&q=$query"
+        val doc = app.get(url).document
 
-        val res = app.get(url).parsedSafe<Map<String, Any?>>()
-        val results = res?.get("results") as? List<Map<String, Any?>> ?: return emptyList()
+        return doc.select(".b-content__inline_item").map { element ->
+            val href = element.selectFirst("a")!!.attr("href")
+            val title = element.selectFirst(".b-content__inline_item-link")!!.text()
+            val poster = element.selectFirst("img")!!.attr("src")
+            val year = element.selectFirst(".b-content__inline_item-link > div")
+                ?.text()?.toIntOrNull()
 
-        return results.mapNotNull { item ->
-            val mediaType = item["media_type"] as? String ?: return@mapNotNull null
-            val id = (item["id"] as? Int)?.toString() ?: return@mapNotNull null
-            val title = item["title"] as? String ?: item["name"] as? String ?: return@mapNotNull null
-            val posterPath = item["poster_path"] as? String
-            val posterUrl = posterPath?.let { "https://image.tmdb.org/t/p/w500$it" }
-            val year = ((item["release_date"] ?: item["first_air_date"]) as? String)?.take(4)?.toIntOrNull()
-
-            val type = when (mediaType) {
-                "movie" -> TvType.Movie
-                "tv" -> TvType.TvSeries
+            // определяем тип из ссылки + быстрая эвристика OVA по названию
+            val baseType = when {
+                href.contains("/anime/") -> {
+                    if (title.contains("OVA", ignoreCase = true) || title.contains("ОВА", ignoreCase = true))
+                        TvType.OVA else TvType.Anime
+                }
+                href.contains("/cartoons/") -> TvType.Cartoon
+                href.contains("/series/") -> TvType.TvSeries
                 else -> TvType.Movie
             }
 
-            newMovieSearchResponse(title, id, type) {
-                this.posterUrl = posterUrl
-                this.year = year
+            // В поиске безопасно отдавать TvSeriesSearch для потенциально эпизодных типов
+            val episodic = baseType == TvType.TvSeries || baseType == TvType.Anime ||
+                           baseType == TvType.OVA || baseType == TvType.Cartoon
+
+            if (episodic) {
+                newTvSeriesSearchResponse(title, href, baseType) {
+                    this.posterUrl = poster
+                    this.year = year
+                }
+            } else {
+                newMovieSearchResponse(title, href, baseType) {
+                    this.posterUrl = poster
+                    this.year = year
+                }
             }
         }
     }
 
-    // =============== LOAD ==================
     override suspend fun load(url: String): LoadResponse {
-        // url = TMDB ID (строка)
-        val id = url.toIntOrNull() ?: throw ErrorLoadingException("Bad ID")
-        val tmdbDetails = app.get("$tmdbApi/movie/$id?api_key=$tmdbApiKey&language=ru").parsedSafe<Map<String, Any?>>()
-            ?: app.get("$tmdbApi/tv/$id?api_key=$tmdbApiKey&language=ru").parsedSafe()
+        val doc = app.get(url).document
+        val title = doc.selectFirst(".b-post__title")!!.text()
+        val poster = doc.selectFirst(".b-sidecover img")?.attr("src")
+        val year = doc.select(".b-post__info li")
+            .find { it.text().contains("год", ignoreCase = true) }
+            ?.text()?.filter { it.isDigit() }?.toIntOrNull()
+        val description = doc.selectFirst(".b-post__description_text")?.text()
 
-        val title = (tmdbDetails?.get("title") ?: tmdbDetails?.get("name")) as? String ?: "Без названия"
-        val overview = tmdbDetails?.get("overview") as? String
-        val posterPath = tmdbDetails?.get("poster_path") as? String
-        val backdropPath = tmdbDetails?.get("backdrop_path") as? String
-        val year = ((tmdbDetails?.get("release_date") ?: tmdbDetails?.get("first_air_date")) as? String)
-            ?.take(4)?.toIntOrNull()
+        // секции сайта
+        val isAnimeSection = url.contains("/anime/")
+        val isCartoonSection = url.contains("/cartoons/")
+        val isSeriesSection = url.contains("/series/")
 
-        val posterUrl = posterPath?.let { "https://image.tmdb.org/t/p/w500$it" }
-        val backdropUrl = backdropPath?.let { "https://image.tmdb.org/t/p/original$it" }
+        // попытка распознать OVA у аниме
+        val infoText = doc.select(".b-post__info li").joinToString(" | ") { it.text().lowercase() }
+        val isOva = isAnimeSection && (
+            infoText.contains("ova") ||
+            infoText.contains("оva") || // на всякий случай
+            infoText.contains("ова") ||
+            title.contains("OVA", ignoreCase = true) ||
+            title.contains("ОВА", ignoreCase = true)
+        )
 
-        // ==================== подтягиваем видео с Rezka ====================
-        val rezkaUrl = "$mainUrl/search/?do=search&subaction=search&q=${URLEncoder.encode(title, "UTF-8")}"
-        val rezkaDoc = app.get(rezkaUrl).document
-        val firstResult = rezkaDoc.select("div.b-content__inline_item a").attr("href")
-
-        val doc = app.get(firstResult).document
-        val episodes = mutableListOf<Episode>()
-        doc.select("div.b-simple_episode__item").forEach { ep ->
-            val epName = ep.select("a").text()
-            val link = ep.select("a").attr("href")
-            val episodeNum = ep.select("div.number").text().toIntOrNull()
-            episodes.add(
-                newEpisode(link) {
-                    this.name = epName
-                    this.episode = episodeNum
-                }
-            )
+        val contentType = when {
+            isOva -> TvType.OVA
+            isAnimeSection -> TvType.Anime
+            isCartoonSection -> TvType.Cartoon
+            isSeriesSection -> TvType.TvSeries
+            else -> TvType.Movie
         }
 
-        return if (episodes.isNotEmpty()) {
-            newTvSeriesLoadResponse(title, firstResult, TvType.TvSeries, episodes) {
-                this.posterUrl = posterUrl
-                this.backgroundPosterUrl = backdropUrl ?: posterUrl
-                this.plot = overview
+        val hasEpisodes = doc.select(".b-simple_episode__item").isNotEmpty()
+
+        return if (hasEpisodes) {
+            val episodes = doc.select(".b-simple_episode__item").mapIndexed { index, el ->
+                val epName = el.selectFirst(".b-simple_episode__item-title")?.text()
+                val href = el.selectFirst("a")?.attr("href") ?: url
+                newEpisode(href) {
+                    this.name = epName
+                    this.episode = index + 1
+                }
+            }
+
+            newTvSeriesLoadResponse(
+                title,
+                url,
+                contentType, // тут уже НЕ TvSeries для аниме/ова/мультов
+                episodes
+            ) {
+                this.posterUrl = poster
                 this.year = year
+                this.plot = description
             }
         } else {
-            newMovieLoadResponse(title, firstResult, TvType.Movie, url) {
-                this.posterUrl = posterUrl
-                this.backgroundPosterUrl = backdropUrl ?: posterUrl
-                this.plot = overview
+            newMovieLoadResponse(
+                title,
+                url,
+                contentType, // фильм-аниме → Anime, фильм-мультфильм → Cartoon и т.д.
+                url
+            ) {
+                this.posterUrl = poster
                 this.year = year
+                this.plot = description
             }
         }
     }
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
+        // реализовано в RezkaMain.kt (extension-функция)
         return loadRezkaMainPage(page)
     }
 }
