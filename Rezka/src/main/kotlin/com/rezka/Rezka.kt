@@ -29,7 +29,6 @@ class Rezka : MainAPI() {
             val year = element.selectFirst(".b-content__inline_item-link > div")
                 ?.text()?.toIntOrNull()
 
-            // Определяем тип контента
             val baseType = when {
                 href.contains("/anime/") -> {
                     if (title.contains("OVA", true) || title.contains("ОВА", true))
@@ -40,17 +39,15 @@ class Rezka : MainAPI() {
                 else -> TvType.Movie
             }
 
-            // Для поиска возвращаем правильный тип
-            when (baseType) {
-                TvType.Anime, TvType.OVA -> newAnimeSearchResponse(title, href, baseType) {
+            val episodic = baseType != TvType.Movie
+
+            if (episodic) {
+                newTvSeriesSearchResponse(title, href, baseType) {
                     this.posterUrl = poster
                     this.year = year
                 }
-                TvType.Cartoon, TvType.TvSeries -> newTvSeriesSearchResponse(title, href, baseType) {
-                    this.posterUrl = poster
-                    this.year = year
-                }
-                else -> newMovieSearchResponse(title, href, baseType) {
+            } else {
+                newMovieSearchResponse(title, href, baseType) {
                     this.posterUrl = poster
                     this.year = year
                 }
@@ -95,34 +92,14 @@ class Rezka : MainAPI() {
             }
         }
 
-        return when (contentType) {
-            // Аниме и OVA
-            TvType.Anime, TvType.OVA -> {
-                newAnimeLoadResponse(title, url, contentType) {
+        return when {
+            // Аниме, OVA, мультфильмы, сериалы → обрабатываем через TvSeries билдер
+            contentType == TvType.Anime || contentType == TvType.OVA ||
+            contentType == TvType.Cartoon || contentType == TvType.TvSeries -> {
+                newTvSeriesLoadResponse(title, url, contentType, episodes) {
                     this.posterUrl = poster
                     this.year = year
                     this.plot = description
-
-                    if (hasEpisodes) {
-                        addEpisodes(DubStatus.Subbed, episodes)
-                    }
-                }
-            }
-
-            // Сериалы и мультики
-            TvType.TvSeries, TvType.Cartoon -> {
-                if (hasEpisodes) {
-                    newTvSeriesLoadResponse(title, url, contentType, episodes) {
-                        this.posterUrl = poster
-                        this.year = year
-                        this.plot = description
-                    }
-                } else {
-                    newMovieLoadResponse(title, url, contentType, url) {
-                        this.posterUrl = poster
-                        this.year = year
-                        this.plot = description
-                    }
                 }
             }
 
