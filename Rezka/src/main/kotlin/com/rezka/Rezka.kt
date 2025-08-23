@@ -7,7 +7,6 @@ import com.lagradost.cloudstream3.TvType
 import com.lagradost.cloudstream3.SearchResponse
 import com.lagradost.cloudstream3.LoadResponse
 import com.rezka.loadRezkaMainPage
-import org.jsoup.Jsoup
 
 class Rezka : MainAPI() {
     override var mainUrl = "https://rezka-ua.org"
@@ -19,42 +18,42 @@ class Rezka : MainAPI() {
         setOf(TvType.Movie, TvType.TvSeries, TvType.Anime, TvType.Cartoon, TvType.OVA)
 
     override suspend fun search(query: String): List<SearchResponse> {
-    val url = "$mainUrl/search/?do=search&subaction=search&q=$query"
-    val doc = app.get(url).document
+        val url = "$mainUrl/search/?do=search&subaction=search&q=$query"
+        val doc = app.get(url).document
 
-    return doc.select(".b-content__inline_item").map { element ->
-        val href = element.selectFirst("a")!!.attr("href")
-        val title = element.selectFirst(".b-content__inline_item-link")!!.text()
-        val poster = element.selectFirst("img")!!.attr("src")
-        val year = element.selectFirst(".b-content__inline_item-link > div")
-            ?.text()?.toIntOrNull()
+        return doc.select(".b-content__inline_item").map { element ->
+            val href = element.selectFirst("a")!!.attr("href")
+            val title = element.selectFirst(".b-content__inline_item-link")!!.text()
+            val poster = element.selectFirst("img")!!.attr("src")
+            val year = element.selectFirst(".b-content__inline_item-link > div")
+                ?.text()?.toIntOrNull()
 
-        val baseType = when {
-            href.contains("/anime/") -> {
-                if (title.contains("OVA", true) || title.contains("ОВА", true))
-                    TvType.OVA else TvType.Anime
+            val baseType = when {
+                href.contains("/anime/") -> {
+                    if (title.contains("OVA", true) || title.contains("ОВА", true))
+                        TvType.OVA else TvType.Anime
+                }
+                href.contains("/cartoons/") -> TvType.Cartoon
+                href.contains("/series/") -> TvType.TvSeries
+                else -> TvType.Movie
             }
-            href.contains("/cartoons/") -> TvType.Cartoon
-            href.contains("/series/") -> TvType.TvSeries
-            else -> TvType.Movie
-        }
 
-        when (baseType) {
-            TvType.Anime, TvType.OVA -> newAnimeSearchResponse(title, href, baseType) {
-                this.posterUrl = poster
-                this.year = year
-            }
-            TvType.Cartoon, TvType.TvSeries -> newTvSeriesSearchResponse(title, href, baseType) {
-                this.posterUrl = poster
-                this.year = year
-            }
-            else -> newMovieSearchResponse(title, href, baseType) {
-                this.posterUrl = poster
-                this.year = year
+            when (baseType) {
+                TvType.Anime, TvType.OVA -> newAnimeSearchResponse(title, href, baseType) {
+                    this.posterUrl = poster
+                    this.year = year
+                }
+                TvType.Cartoon, TvType.TvSeries -> newTvSeriesSearchResponse(title, href, baseType) {
+                    this.posterUrl = poster
+                    this.year = year
+                }
+                else -> newMovieSearchResponse(title, href, baseType) {
+                    this.posterUrl = poster
+                    this.year = year
+                }
             }
         }
     }
-}
 
     override suspend fun load(url: String): LoadResponse {
         val doc = app.get(url).document
@@ -94,37 +93,37 @@ class Rezka : MainAPI() {
         }
 
         return when {
-    // Аниме и OVA
-    contentType == TvType.Anime || contentType == TvType.OVA -> {
-        newAnimeLoadResponse(title, url, contentType, false) {
-            this.posterUrl = poster
-            this.year = year
-            this.plot = description
+            // Аниме и OVA
+            contentType == TvType.Anime || contentType == TvType.OVA -> {
+                newAnimeLoadResponse(title, url, contentType, false) {
+                    this.posterUrl = poster
+                    this.year = year
+                    this.plot = description
 
-            if (hasEpisodes) {
-                addEpisodes(DubStatus.Subbed, episodes)
+                    if (hasEpisodes) {
+                        addEpisodes(DubStatus.Subbed, episodes)
+                    }
+                }
+            }
+
+            // Сериалы и мультики
+            hasEpisodes -> {
+                newTvSeriesLoadResponse(title, url, contentType, episodes) {
+                    this.posterUrl = poster
+                    this.year = year
+                    this.plot = description
+                }
+            }
+
+            // Фильмы
+            else -> {
+                newMovieLoadResponse(title, url, contentType, url) {
+                    this.posterUrl = poster
+                    this.year = year
+                    this.plot = description
+                }
             }
         }
-    }
-
-    // Сериалы и мультики с эпизодами
-    hasEpisodes -> {
-        newTvSeriesLoadResponse(title, url, contentType, episodes) {
-            this.posterUrl = poster
-            this.year = year
-            this.plot = description
-        }
-    }
-
-    // Фильмы
-    else -> {
-        newMovieLoadResponse(title, url, contentType, url) {
-            this.posterUrl = poster
-            this.year = year
-            this.plot = description
-        }
-    }
-}
     }
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
