@@ -14,6 +14,8 @@ import com.lagradost.cloudstream3.LoadResponse.Companion.addActors
 import org.jsoup.nodes.Document
 import com.rezka.loadRezkaMainPage
 import com.lagradost.cloudstream3.DubStatus
+import java.net.URLEncoder
+import java.nio.charset.StandardCharsets
 import org.jsoup.Jsoup
 
 class Rezka : MainAPI() {
@@ -25,7 +27,17 @@ class Rezka : MainAPI() {
 
     override val hasMainPage = true
 
-    override suspend fun search(query: String): List<SearchResponse> {
+    data class TmdbSearchResponse(
+        val results: List<TmdbMovie>
+    )
+
+    data class TmdbMovie(
+        val backdrop_path: String?,
+        val poster_path: String?,
+        val title: String
+    )
+	
+	override suspend fun search(query: String): List<SearchResponse> {
         val url = "$mainUrl/search/?do=search&subaction=search&q=$query"
         val doc = app.get(url).document
 
@@ -72,6 +84,14 @@ override suspend fun load(url: String): LoadResponse {
     val poster = doc.select("div.b-post__poster img").attr("src")
     val year = doc.select("table.b-post__info tr:contains(год) td:last-child").text().toIntOrNull()
     val description = doc.select("div.b-post__description_text").text()
+	
+	val tmdbApiKey = "890a864b9b0ab3d5819bc342896d6de5" // 🔑 сюда вставь свой ключ с themoviedb.org
+        val tmdbSearchUrl =
+    "https://api.themoviedb.org/3/search/movie?api_key=$tmdbApiKey&language=ru&query=${
+        URLEncoder.encode(title, StandardCharsets.UTF_8.toString())}"
+        val tmdbResponse = app.get(tmdbSearchUrl).parsedSafe<TmdbSearchResponse>()
+        val tmdbBackdrop = tmdbResponse?.results?.firstOrNull()?.backdrop_path
+        val backdropFull = tmdbBackdrop?.let { "https://image.tmdb.org/t/p/original$it" }
 
     val contentType = when {
         url.contains("/cartoons/") -> TvType.Cartoon
@@ -100,12 +120,14 @@ override suspend fun load(url: String): LoadResponse {
         if (episodes.isNotEmpty()) {
             newTvSeriesLoadResponse(title, url, TvType.Cartoon, episodes) {
                 this.posterUrl = poster
+				this.backgroundPosterUrl = backdropFull ?: poster
                 this.year = year
                 this.plot = description
             }
         } else {
             newMovieLoadResponse(title, url, TvType.Cartoon, url) {
                 this.posterUrl = poster
+				this.backgroundPosterUrl = backdropFull ?: poster
                 this.year = year
                 this.plot = description
             }
@@ -116,6 +138,7 @@ override suspend fun load(url: String): LoadResponse {
     if (episodes.isNotEmpty()) {
         newAnimeLoadResponse(title, url, TvType.Anime) {
             this.posterUrl = poster
+			this.backgroundPosterUrl = backdropFull ?: poster
             this.year = year
             this.plot = description
             addEpisodes(DubStatus.Subbed, episodes)
@@ -123,6 +146,7 @@ override suspend fun load(url: String): LoadResponse {
     } else {
         newAnimeLoadResponse(title, url, TvType.Anime) {
             this.posterUrl = poster
+			this.backgroundPosterUrl = backdropFull ?: poster
             this.year = year
             this.plot = description
             }
@@ -133,12 +157,14 @@ override suspend fun load(url: String): LoadResponse {
         if (episodes.isNotEmpty()) {
             newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes) {
                 this.posterUrl = poster
+				this.backgroundPosterUrl = backdropFull ?: poster
                 this.year = year
                 this.plot = description
             }
         } else {
             newMovieLoadResponse(title, url, TvType.Movie, url) {
                 this.posterUrl = poster
+				this.backgroundPosterUrl = backdropFull ?: poster
                 this.year = year
                 this.plot = description
             }
@@ -148,6 +174,7 @@ override suspend fun load(url: String): LoadResponse {
     else -> {
         newMovieLoadResponse(title, url, TvType.Movie, url) {
             this.posterUrl = poster
+			this.backgroundPosterUrl = backdropFull ?: poster
             this.year = year
             this.plot = description
         }
