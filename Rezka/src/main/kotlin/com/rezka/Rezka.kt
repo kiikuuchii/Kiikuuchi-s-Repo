@@ -93,8 +93,10 @@ override suspend fun load(url: String): LoadResponse {
         else -> TvType.Movie
     }
 
-    // 👇 Потом уже формируем запрос к TMDB (потому что используем contentType)
-    val tmdbApiKey = "890a864b9b0ab3d5819bc342896d6de5" // 🔑 твой ключ
+    // 🔑 ключ TMDB
+    val tmdbApiKey = "890a864b9b0ab3d5819bc342896d6de5"
+
+    // 🚀 поиск в TMDB (как у тебя сейчас)
     val tmdbSearchUrl = when (contentType) {
         TvType.Movie, TvType.AnimeMovie ->
             "https://api.themoviedb.org/3/search/movie?api_key=$tmdbApiKey&language=ru&query=${
@@ -110,15 +112,25 @@ override suspend fun load(url: String): LoadResponse {
             }"
     }
 
-    // 👇 Здесь уже можно сходить в TMDB и вытащить постеры/задники
     val tmdbResponse = app.get(tmdbSearchUrl).parsedSafe<Map<String, Any>>()
     val results = tmdbResponse?.get("results") as? List<Map<String, Any>>
     val first = results?.firstOrNull()
-    val backdrop = first?.get("backdrop_path") as? String
     val posterTmdb = first?.get("poster_path") as? String
-
-    val backdropUrl = backdrop?.let { "https://image.tmdb.org/t/p/original$it" }
     val posterUrl = posterTmdb?.let { "https://image.tmdb.org/t/p/w500$it" } ?: poster
+
+    // 🚀 ВАЖНО: берём id из TMDB для отдельного запроса к /images
+    val tmdbId = first?.get("id")?.toString()
+    var backdropUrl: String? = null
+    if (tmdbId != null) {
+        val mediaType = if (contentType in listOf(TvType.Movie, TvType.AnimeMovie)) "movie" else "tv"
+        val imagesUrl = "https://api.themoviedb.org/3/$mediaType/$tmdbId/images?api_key=$tmdbApiKey"
+        val imagesResponse = app.get(imagesUrl).parsedSafe<Map<String, Any>>()
+        val backdrops = (imagesResponse?.get("backdrops") as? List<Map<String, Any>>).orEmpty()
+        val bestBackdrop = backdrops.maxByOrNull { (it["vote_average"] as? Number)?.toDouble() ?: 0.0 }
+        backdropUrl = bestBackdrop?.get("file_path")?.toString()?.let {
+            "https://image.tmdb.org/t/p/original$it"
+        }
+    }
 
     // 👇 Собираем список эпизодов
     val episodes = mutableListOf<Episode>()
@@ -136,71 +148,72 @@ override suspend fun load(url: String): LoadResponse {
     }
 
     return when (contentType) {
-    TvType.Cartoon -> {
-        if (episodes.isNotEmpty()) {
-            newTvSeriesLoadResponse(title, url, TvType.Cartoon, episodes) {
-                this.posterUrl = poster
-				this.backgroundPosterUrl = backdropUrl ?: poster
-                this.year = year
-                this.plot = description
-            }
-        } else {
-            newMovieLoadResponse(title, url, TvType.Cartoon, url) {
-                this.posterUrl = poster
-				this.backgroundPosterUrl = backdropUrl ?: poster
-                this.year = year
-                this.plot = description
+        TvType.Cartoon -> {
+            if (episodes.isNotEmpty()) {
+                newTvSeriesLoadResponse(title, url, TvType.Cartoon, episodes) {
+                    this.posterUrl = posterUrl
+                    this.backgroundPosterUrl = backdropUrl ?: posterUrl
+                    this.year = year
+                    this.plot = description
+                }
+            } else {
+                newMovieLoadResponse(title, url, TvType.Cartoon, url) {
+                    this.posterUrl = posterUrl
+                    this.backgroundPosterUrl = backdropUrl ?: posterUrl
+                    this.year = year
+                    this.plot = description
+                }
             }
         }
-    }
 
-    TvType.Anime -> {
-    if (episodes.isNotEmpty()) {
-        newAnimeLoadResponse(title, url, TvType.Anime) {
-            this.posterUrl = poster
-			this.backgroundPosterUrl = backdropUrl ?: poster
-            this.year = year
-            this.plot = description
-            addEpisodes(DubStatus.Subbed, episodes)
-        }
-    } else {
-        newAnimeLoadResponse(title, url, TvType.Anime) {
-            this.posterUrl = poster
-			this.backgroundPosterUrl = backdropUrl ?: poster
-            this.year = year
-            this.plot = description
+        TvType.Anime -> {
+            if (episodes.isNotEmpty()) {
+                newAnimeLoadResponse(title, url, TvType.Anime) {
+                    this.posterUrl = posterUrl
+                    this.backgroundPosterUrl = backdropUrl ?: posterUrl
+                    this.year = year
+                    this.plot = description
+                    addEpisodes(DubStatus.Subbed, episodes)
+                }
+            } else {
+                newAnimeLoadResponse(title, url, TvType.Anime) {
+                    this.posterUrl = posterUrl
+                    this.backgroundPosterUrl = backdropUrl ?: posterUrl
+                    this.year = year
+                    this.plot = description
+                }
             }
         }
-    }
 
-    TvType.TvSeries -> {
-        if (episodes.isNotEmpty()) {
-            newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes) {
-                this.posterUrl = poster
-				this.backgroundPosterUrl = backdropUrl ?: poster
-                this.year = year
-                this.plot = description
+        TvType.TvSeries -> {
+            if (episodes.isNotEmpty()) {
+                newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes) {
+                    this.posterUrl = posterUrl
+                    this.backgroundPosterUrl = backdropUrl ?: posterUrl
+                    this.year = year
+                    this.plot = description
+                }
+            } else {
+                newMovieLoadResponse(title, url, TvType.Movie, url) {
+                    this.posterUrl = posterUrl
+                    this.backgroundPosterUrl = backdropUrl ?: posterUrl
+                    this.year = year
+                    this.plot = description
+                }
             }
-        } else {
+        }
+
+        else -> {
             newMovieLoadResponse(title, url, TvType.Movie, url) {
-                this.posterUrl = poster
-				this.backgroundPosterUrl = backdropUrl ?: poster
+                this.posterUrl = posterUrl
+                this.backgroundPosterUrl = backdropUrl ?: posterUrl
                 this.year = year
                 this.plot = description
             }
         }
     }
+}
 
-    else -> {
-        newMovieLoadResponse(title, url, TvType.Movie, url) {
-            this.posterUrl = poster
-			this.backgroundPosterUrl = backdropUrl ?: poster
-            this.year = year
-            this.plot = description
-        }
-    }
-}
-}
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
         // реализовано в RezkaMain.kt (extension-функция)
