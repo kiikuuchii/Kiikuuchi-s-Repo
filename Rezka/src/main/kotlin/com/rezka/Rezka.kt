@@ -64,14 +64,14 @@ class Rezka : MainAPI() {
     }
 
     override suspend fun load(url: String): LoadResponse {
-        val doc = app.get(url).document
+        val tmdbApiKey = "890a864b9b0ab3d5819bc342896d6de5"
+		val doc = app.get(url).document
 
         val title = doc.select("h1").text()
+        val originalTitle = doc.select("div.b-post__origtitle").text().ifBlank { title }
         val poster = doc.select("div.b-post__poster img").attr("src")
         val year = doc.select("table.b-post__info tr:contains(год) td:last-child").text().toIntOrNull()
         val description = doc.select("div.b-post__description_text").text()
-        val originalTitle = doc.select("table.b-post__info tr:contains(Оригинальное название) td:last-child")
-            .text().ifBlank { title }
 
         val contentType = when {
             url.contains("/cartoons/") -> TvType.Cartoon
@@ -80,40 +80,47 @@ class Rezka : MainAPI() {
             else -> TvType.Movie
         }
 
-        val tmdbApiKey = "890a864b9b0ab3d5819bc342896d6de5"
-
-        val tmdbSearchUrl = when (contentType) {
-            TvType.Movie, TvType.AnimeMovie ->
-                "https://api.themoviedb.org/3/search/movie?api_key=$tmdbApiKey&language=ru&query=${
-                    URLEncoder.encode(originalTitle, StandardCharsets.UTF_8.toString())
-                }"
-            TvType.Anime, TvType.Cartoon, TvType.TvSeries ->
-                "https://api.themoviedb.org/3/search/tv?api_key=$tmdbApiKey&language=ru&query=${
-                    URLEncoder.encode(originalTitle, StandardCharsets.UTF_8.toString())
-                }"
-            else ->
-                "https://api.themoviedb.org/3/search/multi?api_key=$tmdbApiKey&language=ru&query=${
-                    URLEncoder.encode(originalTitle, StandardCharsets.UTF_8.toString())
-                }"
+        // 🔎 шаг 1 — поиск в TMDB
+        val query = URLEncoder.encode(originalTitle, StandardCharsets.UTF_8.toString())
+        val searchUrl = when (contentType) {
+            TvType.Movie -> "https://api.themoviedb.org/3/search/movie?api_key=$tmdbApiKey&language=ru&query=$query"
+            else -> "https://api.themoviedb.org/3/search/tv?api_key=$tmdbApiKey&language=ru&query=$query"
         }
 
-        val tmdbResponse = app.get(tmdbSearchUrl).parsedSafe<Map<String, Any>>()
-        val results = tmdbResponse?.get("results") as? List<Map<String, Any>>
+        val searchJson = app.get(searchUrl).parsedSafe<Map<String, Any?>>()
+        val results = searchJson?.get("results") as? List<Map<String, Any?>>
+        val firstResult = results?.firstOrNull()
 
-        val first = results
-            ?.filter { r ->
-                val rYear = (r["first_air_date"] as? String)?.take(4)?.toIntOrNull()
-                    ?: (r["release_date"] as? String)?.take(4)?.toIntOrNull()
-                if (year != null && rYear != null) rYear == year else true
+        var backdropFull: String? = null
+        var posterFull: String? = null
+
+        if (firstResult != null) {
+            val tmdbId = (firstResult["id"] as? Number)?.toInt()
+            if (tmdbId != null) {
+                // 🔎 шаг 2 — получаем детали по ID
+                val detailsUrl = when (contentType) {
+                    TvType.Movie -> "https://api.themoviedb.org/3/movie/$tmdbId?api_key=$tmdbApiKey&language=ru"
+                    else -> "https://api.themoviedb.org/3/tv/$tmdbId?api_key=$tmdbApiKey&language=ru"
+                }
+                val detailsJson = app.get(detailsUrl).parsedSafe<Map<String, Any?>>()
+
+                val backdropPath = detailsJson?.get("backdrop_path") as? String
+                val posterPath = detailsJson?.get("poster_path") as? String
+
+                if (backdropPath != null) {
+                    backdropFull = "https://image.tmdb.org/t/p/original$backdropPath"
+                }
+                if (posterPath != null) {
+                    posterFull = "https://image.tmdb.org/t/p/w500$posterPath"
+                }
             }
-            ?.firstOrNull()
+        }
 
-        val backdrop = first?.get("backdrop_path") as? String
-        val posterTmdb = first?.get("poster_path") as? String
+        // 🖼️ выбираем что использовать
+        val finalPoster = posterFull ?: poster
+        val finalBackdrop = backdropFull ?: finalPoster
 
-        val backdropUrl = backdrop?.let { "https://image.tmdb.org/t/p/original$it" }
-        val posterUrl = posterTmdb?.let { "https://image.tmdb.org/t/p/w500$it" } ?: poster
-
+        // собираем список эпизодов
         val episodes = mutableListOf<Episode>()
         doc.select("div.b-simple_episode__item").forEach { ep ->
             val name = ep.select("a").text()
@@ -128,19 +135,19 @@ class Rezka : MainAPI() {
             )
         }
 
-        return when (contentType) {
+return when (contentType) {
             TvType.Cartoon -> {
                 if (episodes.isNotEmpty()) {
                     newTvSeriesLoadResponse(title, url, TvType.Cartoon, episodes) {
                         this.posterUrl = posterUrl
-                        this.backgroundPosterUrl = backdropUrl ?: posterUrl
+                        this.backgroundPosterUrl = finalBackdrop
                         this.year = year
                         this.plot = description
                     }
                 } else {
                     newMovieLoadResponse(title, url, TvType.Cartoon, url) {
                         this.posterUrl = posterUrl
-                        this.backgroundPosterUrl = backdropUrl ?: posterUrl
+                        this.backgroundPosterUrl = finalBackdrop
                         this.year = year
                         this.plot = description
                     }
@@ -151,7 +158,7 @@ class Rezka : MainAPI() {
                 if (episodes.isNotEmpty()) {
                     newAnimeLoadResponse(title, url, TvType.Anime) {
                         this.posterUrl = posterUrl
-                        this.backgroundPosterUrl = backdropUrl ?: posterUrl
+                        this.backgroundPosterUrl = finalBackdrop
                         this.year = year
                         this.plot = description
                         addEpisodes(DubStatus.Subbed, episodes)
@@ -159,7 +166,7 @@ class Rezka : MainAPI() {
                 } else {
                     newAnimeLoadResponse(title, url, TvType.Anime) {
                         this.posterUrl = posterUrl
-                        this.backgroundPosterUrl = backdropUrl ?: posterUrl
+                        this.backgroundPosterUrl = finalBackdrop
                         this.year = year
                         this.plot = description
                     }
@@ -170,14 +177,14 @@ class Rezka : MainAPI() {
                 if (episodes.isNotEmpty()) {
                     newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes) {
                         this.posterUrl = posterUrl
-                        this.backgroundPosterUrl = backdropUrl ?: posterUrl
+                        this.backgroundPosterUrl = finalBackdrop
                         this.year = year
                         this.plot = description
                     }
                 } else {
                     newMovieLoadResponse(title, url, TvType.Movie, url) {
                         this.posterUrl = posterUrl
-                        this.backgroundPosterUrl = backdropUrl ?: posterUrl
+                        this.backgroundPosterUrl = finalBackdrop
                         this.year = year
                         this.plot = description
                     }
@@ -187,14 +194,15 @@ class Rezka : MainAPI() {
             else -> {
                 newMovieLoadResponse(title, url, TvType.Movie, url) {
                     this.posterUrl = posterUrl
-                    this.backgroundPosterUrl = backdropUrl ?: posterUrl
+                    this.backgroundPosterUrl = finalBackdrop
                     this.year = year
                     this.plot = description
                 }
             }
         }
-    }
 
+    } 
+	
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
         return loadRezkaMainPage(page)
     }
