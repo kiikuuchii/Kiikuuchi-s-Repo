@@ -7,6 +7,7 @@ import com.lagradost.cloudstream3.TvType
 import com.lagradost.cloudstream3.SearchResponse
 import com.lagradost.cloudstream3.LoadResponse
 import com.rezka.loadRezkaMainPage
+import org.jsoup.Jsoup
 
 class Rezka : MainAPI() {
     override var mainUrl = "https://rezka-ua.org"
@@ -28,6 +29,7 @@ class Rezka : MainAPI() {
             val year = element.selectFirst(".b-content__inline_item-link > div")
                 ?.text()?.toIntOrNull()
 
+            // Определяем тип контента
             val baseType = when {
                 href.contains("/anime/") -> {
                     if (title.contains("OVA", true) || title.contains("ОВА", true))
@@ -38,6 +40,7 @@ class Rezka : MainAPI() {
                 else -> TvType.Movie
             }
 
+            // Для поиска возвращаем правильный тип
             when (baseType) {
                 TvType.Anime, TvType.OVA -> newAnimeSearchResponse(title, href, baseType) {
                     this.posterUrl = poster
@@ -92,10 +95,10 @@ class Rezka : MainAPI() {
             }
         }
 
-        return when {
+        return when (contentType) {
             // Аниме и OVA
-            contentType == TvType.Anime || contentType == TvType.OVA -> {
-                newAnimeLoadResponse(title, url, contentType, false) {
+            TvType.Anime, TvType.OVA -> {
+                newAnimeLoadResponse(title, url, contentType) {
                     this.posterUrl = poster
                     this.year = year
                     this.plot = description
@@ -107,11 +110,19 @@ class Rezka : MainAPI() {
             }
 
             // Сериалы и мультики
-            hasEpisodes -> {
-                newTvSeriesLoadResponse(title, url, contentType, episodes) {
-                    this.posterUrl = poster
-                    this.year = year
-                    this.plot = description
+            TvType.TvSeries, TvType.Cartoon -> {
+                if (hasEpisodes) {
+                    newTvSeriesLoadResponse(title, url, contentType, episodes) {
+                        this.posterUrl = poster
+                        this.year = year
+                        this.plot = description
+                    }
+                } else {
+                    newMovieLoadResponse(title, url, contentType, url) {
+                        this.posterUrl = poster
+                        this.year = year
+                        this.plot = description
+                    }
                 }
             }
 
