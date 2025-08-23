@@ -19,51 +19,17 @@ import java.nio.charset.StandardCharsets
 import org.jsoup.Jsoup
 
 class Rezka : MainAPI() {
-    override var mainUrl = "https://rezka-ua.org"
+    override var mainUrl = "https://rezka.ag"
     override var name = "Rezka"
-    override var lang = "ru"
-    override val supportedTypes =
-        setOf(TvType.Movie, TvType.TvSeries, TvType.Anime, TvType.Cartoon, TvType.OVA)
-
     override val hasMainPage = true
-
-    override suspend fun search(query: String): List<SearchResponse> {
-        val url = "$mainUrl/search/?do=search&subaction=search&q=$query"
-        val doc = app.get(url).document
-
-        return doc.select(".b-content__inline_item").map { element ->
-            val href = element.selectFirst("a")!!.attr("href")
-            val title = element.selectFirst(".b-content__inline_item-link")!!.text()
-            val poster = element.selectFirst("img")!!.attr("src")
-            val year = element.selectFirst(".b-content__inline_item-link > div")
-                ?.text()?.toIntOrNull()
-
-            val baseType = when {
-                href.contains("/anime/") -> {
-                    if (title.contains("OVA", ignoreCase = true) || title.contains("ОВА", ignoreCase = true))
-                        TvType.OVA else TvType.Anime
-                }
-                href.contains("/cartoons/") -> TvType.Cartoon
-                href.contains("/series/") -> TvType.TvSeries
-                else -> TvType.Movie
-            }
-
-            val episodic = baseType == TvType.TvSeries || baseType == TvType.Anime ||
-                           baseType == TvType.OVA || baseType == TvType.Cartoon
-
-            if (episodic) {
-                newTvSeriesSearchResponse(title, href, baseType) {
-                    this.posterUrl = poster
-                    this.year = year
-                }
-            } else {
-                newMovieSearchResponse(title, href, baseType) {
-                    this.posterUrl = poster
-                    this.year = year
-                }
-            }
-        }
-    }
+    override var lang = "ru"
+    override val supportedTypes = setOf(
+        TvType.Movie,
+        TvType.TvSeries,
+        TvType.Cartoon,
+        TvType.Anime,
+        TvType.AnimeMovie
+    )
 
     override suspend fun load(url: String): LoadResponse {
         val doc = app.get(url).document
@@ -80,40 +46,66 @@ class Rezka : MainAPI() {
             else -> TvType.Movie
         }
 
-        val tmdbApiKey = "890a864b9b0ab3d5819bc342896d6de5" // 🔑 твой ключ
-        val tmdbSearchUrl = when (contentType) {
-            TvType.Movie, TvType.OVA ->
-                "https://api.themoviedb.org/3/search/movie?api_key=$tmdbApiKey&language=ru&query=${
-                    URLEncoder.encode(title, StandardCharsets.UTF_8.toString())
-                }"
-            TvType.Anime, TvType.Cartoon, TvType.TvSeries ->
-                "https://api.themoviedb.org/3/search/tv?api_key=$tmdbApiKey&language=ru&query=${
-                    URLEncoder.encode(title, StandardCharsets.UTF_8.toString())
-                }"
-            else ->
-                "https://api.themoviedb.org/3/search/multi?api_key=$tmdbApiKey&language=ru&query=${
-                    URLEncoder.encode(title, StandardCharsets.UTF_8.toString())
-                }"
+        // --- 🔑 Постеры и баннеры ---
+        var backdropUrl: String? = null
+        var posterUrl: String? = poster
+
+        when (contentType) {
+            TvType.Movie, TvType.TvSeries, TvType.AnimeMovie -> {
+                // TMDB для фильмов и сериалов
+                val tmdbApiKey = "890a864b9b0ab3d5819bc342896d6de5"
+                val tmdbSearchUrl =
+                    if (contentType == TvType.Movie || contentType == TvType.AnimeMovie)
+                        "https://api.themoviedb.org/3/search/movie?api_key=$tmdbApiKey&language=ru&query=${
+                            URLEncoder.encode(title, StandardCharsets.UTF_8.toString())
+                        }"
+                    else
+                        "https://api.themoviedb.org/3/search/tv?api_key=$tmdbApiKey&language=ru&query=${
+                            URLEncoder.encode(title, StandardCharsets.UTF_8.toString())
+                        }"
+
+                val tmdbResponse = app.get(tmdbSearchUrl).parsedSafe<Map<String, Any>>()
+                val results = tmdbResponse?.get("results") as? List<Map<String, Any>>
+                val first = results?.firstOrNull()
+                val backdrop = first?.get("backdrop_path") as? String
+                val posterTmdb = first?.get("poster_path") as? String
+
+                backdropUrl = backdrop?.let { "https://image.tmdb.org/t/p/original$it" }
+                posterUrl = posterTmdb?.let { "https://image.tmdb.org/t/p/w500$it" } ?: poster
+            }
+
+            TvType.Anime -> {
+                // Shikimori для аниме
+                val shikiUrl =
+                    "https://shikimori.one/api/animes?search=${URLEncoder.encode(title, StandardCharsets.UTF_8.toString())}"
+                val shikiResp = app.get(shikiUrl).parsedSafe<List<Map<String, Any>>>()
+                val first = shikiResp?.firstOrNull()
+                val image = (first?.get("image") as? Map<*, *>)
+                posterUrl = (image?.get("preview") as? String)?.let { "https://shikimori.one$it" } ?: poster
+                backdropUrl = (image?.get("original") as? String)?.let { "https://shikimori.one$it" }
+            }
+
+            TvType.Cartoon -> {
+                // Fanart для мультов
+                val fanartApiKey = "YOUR_FANART_KEY_HERE" // 🔑 вставь сюда API ключ с fanart.tv
+                val fanartUrl =
+                    "https://webservice.fanart.tv/v3/movies/${URLEncoder.encode(title, StandardCharsets.UTF_8.toString())}?api_key=$fanartApiKey"
+
+                val fanartResp = app.get(fanartUrl).parsedSafe<Map<String, Any>>()
+                val movieBackgrounds = fanartResp?.get("moviebackground") as? List<Map<String, Any>>
+                val moviePosters = fanartResp?.get("movieposter") as? List<Map<String, Any>>
+
+                backdropUrl = movieBackgrounds?.firstOrNull()?.get("url") as? String
+                posterUrl = moviePosters?.firstOrNull()?.get("url") as? String ?: poster
+            }
+
+            else -> {
+                backdropUrl = poster
+                posterUrl = poster
+            }
         }
 
-        val tmdbResponse = app.get(tmdbSearchUrl).parsedSafe<Map<String, Any>>()
-        val results = tmdbResponse?.get("results") as? List<Map<String, Any>>
-
-        // ✅ фильтр по году (чтобы баннеры не подменялись рандомными)
-        val first = results
-            ?.filter {
-                val release = (it["release_date"] as? String)?.take(4)?.toIntOrNull()
-                    ?: (it["first_air_date"] as? String)?.take(4)?.toIntOrNull()
-                if (year != null) release == year else true
-            }
-            ?.firstOrNull()
-
-        val backdrop = first?.get("backdrop_path") as? String
-        val posterTmdb = first?.get("poster_path") as? String
-
-        val backdropUrl = backdrop?.let { "https://image.tmdb.org/t/p/original$it" }
-        val posterUrl = posterTmdb?.let { "https://image.tmdb.org/t/p/w500$it" } ?: poster
-
+        // --- 🔑 Эпизоды ---
         val episodes = mutableListOf<Episode>()
         doc.select("div.b-simple_episode__item").forEach { ep ->
             val name = ep.select("a").text()
@@ -129,67 +121,20 @@ class Rezka : MainAPI() {
         }
 
         return when (contentType) {
-            TvType.Cartoon -> {
-                if (episodes.isNotEmpty()) {
-                    newTvSeriesLoadResponse(title, url, TvType.Cartoon, episodes) {
-                        this.posterUrl = posterUrl
-                        this.backgroundPosterUrl = backdropUrl ?: posterUrl
-                        this.year = year
-                        this.plot = description
-                    }
-                } else {
-                    newMovieLoadResponse(title, url, TvType.Cartoon, url) {
-                        this.posterUrl = posterUrl
-                        this.backgroundPosterUrl = backdropUrl ?: posterUrl
-                        this.year = year
-                        this.plot = description
-                    }
-                }
-            }
-
-            TvType.Anime -> {
-                if (episodes.isNotEmpty()) {
-                    newAnimeLoadResponse(title, url, TvType.Anime) {
-                        this.posterUrl = posterUrl
-                        this.backgroundPosterUrl = backdropUrl ?: posterUrl
-                        this.year = year
-                        this.plot = description
-                        addEpisodes(DubStatus.Subbed, episodes)
-                    }
-                } else {
-                    newAnimeLoadResponse(title, url, TvType.Anime) {
-                        this.posterUrl = posterUrl
-                        this.backgroundPosterUrl = backdropUrl ?: posterUrl
-                        this.year = year
-                        this.plot = description
-                    }
-                }
-            }
-
-            TvType.TvSeries -> {
-                if (episodes.isNotEmpty()) {
-                    newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes) {
-                        this.posterUrl = posterUrl
-                        this.backgroundPosterUrl = backdropUrl ?: posterUrl
-                        this.year = year
-                        this.plot = description
-                    }
-                } else {
-                    newMovieLoadResponse(title, url, TvType.Movie, url) {
-                        this.posterUrl = posterUrl
-                        this.backgroundPosterUrl = backdropUrl ?: posterUrl
-                        this.year = year
-                        this.plot = description
-                    }
-                }
-            }
-
-            else -> {
-                newMovieLoadResponse(title, url, TvType.Movie, url) {
+            TvType.TvSeries, TvType.Anime, TvType.Cartoon -> {
+                newTvSeriesLoadResponse(title, url, contentType, episodes) {
                     this.posterUrl = posterUrl
                     this.backgroundPosterUrl = backdropUrl ?: posterUrl
-                    this.year = year
                     this.plot = description
+                    this.year = year
+                }
+            }
+            else -> {
+                newMovieLoadResponse(title, url, contentType, url) {
+                    this.posterUrl = posterUrl
+                    this.backgroundPosterUrl = backdropUrl ?: posterUrl
+                    this.plot = description
+                    this.year = year
                 }
             }
         }
