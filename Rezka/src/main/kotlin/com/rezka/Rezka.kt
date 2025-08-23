@@ -13,6 +13,7 @@ import com.lagradost.cloudstream3.SubtitleFile
 import com.lagradost.cloudstream3.LoadResponse.Companion.addActors
 import org.jsoup.nodes.Document
 import com.rezka.loadRezkaMainPage
+import com.lagradost.cloudstream3.DubStatus
 import org.jsoup.Jsoup
 
 class Rezka : MainAPI() {
@@ -66,84 +67,92 @@ class Rezka : MainAPI() {
 
 override suspend fun load(url: String): LoadResponse {
     val doc = app.get(url).document
-    val title = doc.selectFirst(".b-post__title")!!.text()
-    val poster = doc.selectFirst(".b-sidecover img")?.attr("src")
-    val year = doc.select(".b-post__info li")
-        .find { it.text().contains("год", ignoreCase = true) }
-        ?.text()?.filter { it.isDigit() }?.toIntOrNull()
-    val description = doc.selectFirst(".b-post__description_text")?.text()
 
-    // секции сайта
-    val isAnimeSection = url.contains("/anime/")
-    val isCartoonSection = url.contains("/cartoons/")
-    val isSeriesSection = url.contains("/series/")
-
-    // попытка распознать OVA
-    val infoText = doc.select(".b-post__info li").joinToString(" | ") { it.text().lowercase() }
-    val isOva = isAnimeSection && (
-        infoText.contains("ova") ||
-        infoText.contains("оva") ||
-        infoText.contains("ова") ||
-        title.contains("OVA", ignoreCase = true) ||
-        title.contains("ОВА", ignoreCase = true)
-    )
+    val title = doc.select("h1").text()
+    val poster = doc.select("div.b-post__poster img").attr("src")
+    val year = doc.select("table.b-post__info tr:contains(год) td:last-child").text().toIntOrNull()
+    val description = doc.select("div.b-post__description_text").text()
 
     val contentType = when {
-        isOva -> TvType.OVA
-        isAnimeSection -> TvType.Anime
-        isCartoonSection -> TvType.Cartoon
-        isSeriesSection -> TvType.TvSeries
+        url.contains("/cartoons/") -> TvType.Cartoon
+        url.contains("/anime/") -> TvType.Anime
+        url.contains("/series/") -> TvType.TvSeries
         else -> TvType.Movie
     }
 
-    val episodes = doc.select(".b-simple_episode__item").mapIndexed { index, el ->
-        val epName = el.selectFirst(".b-simple_episode__item-title")?.text()
-        val href = el.selectFirst("a")?.attr("href") ?: url
-        newEpisode(href) {
-            this.name = epName
-            this.episode = index + 1
+    // собираем список эпизодов
+    val episodes = mutableListOf<Episode>()
+    doc.select("div.b-simple_episode__item").forEach { ep ->
+        val name = ep.select("a").text()
+        val link = ep.select("a").attr("href")
+        val episodeNum = ep.select("div.number").text().toIntOrNull()
+
+        episodes.add(
+            newEpisode(link) {
+                this.name = name
+                this.episode = episodeNum
+            }
+        )
+    }
+
+    return when (contentType) {
+    TvType.Cartoon -> {
+        if (episodes.isNotEmpty()) {
+            newTvSeriesLoadResponse(title, url, TvType.Cartoon, episodes) {
+                this.posterUrl = poster
+                this.year = year
+                this.plot = description
+            }
+        } else {
+            newMovieLoadResponse(title, url, TvType.Cartoon, url) {
+                this.posterUrl = poster
+                this.year = year
+                this.plot = description
+            }
         }
     }
 
-return when (contentType) {
-    // Обычный сериал
-    TvType.TvSeries -> newTvSeriesLoadResponse(title, url, contentType, episodes) {
-        this.posterUrl = poster
-        this.year = year
-        this.plot = description
+    TvType.Anime -> {
+    if (episodes.isNotEmpty()) {
+        newAnimeLoadResponse(title, url, TvType.Anime) {
+            this.posterUrl = poster
+            this.year = year
+            this.plot = description
+            addEpisodes(DubStatus.Subbed, episodes)
+        }
+    } else {
+        newAnimeLoadResponse(title, url, TvType.Anime) {
+            this.posterUrl = poster
+            this.year = year
+            this.plot = description
+            }
+        }
     }
 
-    // Мультсериал
-    TvType.Cartoon -> newTvSeriesLoadResponse(title, url, contentType, episodes) {
-        this.posterUrl = poster
-        this.year = year
-        this.plot = description
+    TvType.TvSeries -> {
+        if (episodes.isNotEmpty()) {
+            newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes) {
+                this.posterUrl = poster
+                this.year = year
+                this.plot = description
+            }
+        } else {
+            newMovieLoadResponse(title, url, TvType.Movie, url) {
+                this.posterUrl = poster
+                this.year = year
+                this.plot = description
+            }
+        }
     }
 
-    // Аниме
-    TvType.Anime -> newAnimeLoadResponse(title, url, contentType, episodes.isEmpty()) {
-        this.posterUrl = poster
-        this.year = year
-        this.plot = description
-        this.addEpisodes(DubStatus.Subbed, episodes)
+    else -> {
+        newMovieLoadResponse(title, url, TvType.Movie, url) {
+            this.posterUrl = poster
+            this.year = year
+            this.plot = description
+        }
     }
-
-    // OVA — как отдельная категория аниме
-    TvType.OVA -> newAnimeLoadResponse(title, url, contentType, episodes.isEmpty()) {
-        this.posterUrl = poster
-        this.year = year
-        this.plot = description
-        this.addEpisodes(DubStatus.Subbed, episodes)
-    }
-
-    // Фильмы
-    else -> newMovieLoadResponse(title, url, contentType, url) {
-    this.posterUrl = poster
-    this.year = year
-    this.plot = description
 }
-}
-
 }
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
