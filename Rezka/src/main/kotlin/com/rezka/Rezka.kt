@@ -19,7 +19,8 @@ class Rezka : MainAPI() {
     override var mainUrl = "https://rezka-ua.org"
     override var name = "Rezka"
     override var lang = "ru"
-    override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries, TvType.Anime)
+    override val supportedTypes =
+        setOf(TvType.Movie, TvType.TvSeries, TvType.Anime, TvType.Cartoon, TvType.OVA)
 
     override val hasMainPage = true
 
@@ -34,20 +35,28 @@ class Rezka : MainAPI() {
             val year = element.selectFirst(".b-content__inline_item-link > div")
                 ?.text()?.toIntOrNull()
 
-            // Определяем тип
-            val type = when {
-                href.contains("/anime/") -> TvType.Anime
+            // определяем тип из ссылки + быстрая эвристика OVA по названию
+            val baseType = when {
+                href.contains("/anime/") -> {
+                    if (title.contains("OVA", ignoreCase = true) || title.contains("ОВА", ignoreCase = true))
+                        TvType.OVA else TvType.Anime
+                }
+                href.contains("/cartoons/") -> TvType.Cartoon
                 href.contains("/series/") -> TvType.TvSeries
                 else -> TvType.Movie
             }
 
-            if (type == TvType.Anime || type == TvType.TvSeries) {
-                newTvSeriesSearchResponse(title, href, type) {
+            // В поиске безопасно отдавать TvSeriesSearch для потенциально эпизодных типов
+            val episodic = baseType == TvType.TvSeries || baseType == TvType.Anime ||
+                           baseType == TvType.OVA || baseType == TvType.Cartoon
+
+            if (episodic) {
+                newTvSeriesSearchResponse(title, href, baseType) {
                     this.posterUrl = poster
                     this.year = year
                 }
             } else {
-                newMovieSearchResponse(title, href, type) {
+                newMovieSearchResponse(title, href, baseType) {
                     this.posterUrl = poster
                     this.year = year
                 }
@@ -60,21 +69,41 @@ class Rezka : MainAPI() {
         val title = doc.selectFirst(".b-post__title")!!.text()
         val poster = doc.selectFirst(".b-sidecover img")?.attr("src")
         val year = doc.select(".b-post__info li")
-            .find { it.text().contains("год") }
+            .find { it.text().contains("год", ignoreCase = true) }
             ?.text()?.filter { it.isDigit() }?.toIntOrNull()
         val description = doc.selectFirst(".b-post__description_text")?.text()
 
-        // Определяем тип
-        val isAnime = url.contains("/anime/")
+        // секции сайта
+        val isAnimeSection = url.contains("/anime/")
+        val isCartoonSection = url.contains("/cartoons/")
+        val isSeriesSection = url.contains("/series/")
+
+        // попытка распознать OVA у аниме
+        val infoText = doc.select(".b-post__info li").joinToString(" | ") { it.text().lowercase() }
+        val isOva = isAnimeSection && (
+            infoText.contains("ova") ||
+            infoText.contains("оva") || // на всякий случай
+            infoText.contains("ова") ||
+            title.contains("OVA", ignoreCase = true) ||
+            title.contains("ОВА", ignoreCase = true)
+        )
+
+        val contentType = when {
+            isOva -> TvType.OVA
+            isAnimeSection -> TvType.Anime
+            isCartoonSection -> TvType.Cartoon
+            isSeriesSection -> TvType.TvSeries
+            else -> TvType.Movie
+        }
+
         val hasEpisodes = doc.select(".b-simple_episode__item").isNotEmpty()
 
         return if (hasEpisodes) {
-            // Сериал или аниме-сериал
             val episodes = doc.select(".b-simple_episode__item").mapIndexed { index, el ->
-                val name = el.selectFirst(".b-simple_episode__item-title")?.text()
+                val epName = el.selectFirst(".b-simple_episode__item-title")?.text()
                 val href = el.selectFirst("a")?.attr("href") ?: url
                 newEpisode(href) {
-                    this.name = name
+                    this.name = epName
                     this.episode = index + 1
                 }
             }
@@ -82,7 +111,7 @@ class Rezka : MainAPI() {
             newTvSeriesLoadResponse(
                 title,
                 url,
-                if (isAnime) TvType.Anime else TvType.TvSeries,
+                contentType, // тут уже НЕ TvSeries для аниме/ова/мультов
                 episodes
             ) {
                 this.posterUrl = poster
@@ -90,11 +119,10 @@ class Rezka : MainAPI() {
                 this.plot = description
             }
         } else {
-            // Фильм или аниме-фильм
             newMovieLoadResponse(
                 title,
                 url,
-                if (isAnime) TvType.Anime else TvType.Movie,
+                contentType, // фильм-аниме → Anime, фильм-мультфильм → Cartoon и т.д.
                 url
             ) {
                 this.posterUrl = poster
@@ -103,8 +131,9 @@ class Rezka : MainAPI() {
             }
         }
     }
-	
-	override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-    return loadRezkaMainPage(page)
+
+    override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
+        // реализовано в RezkaMain.kt (extension-функция)
+        return loadRezkaMainPage(page)
     }
 }
