@@ -70,8 +70,9 @@ class Rezka : MainAPI() {
         val poster = doc.select("div.b-post__poster img").attr("src")
         val year = doc.select("table.b-post__info tr:contains(год) td:last-child").text().toIntOrNull()
         val description = doc.select("div.b-post__description_text").text()
+        val originalTitle = doc.select("table.b-post__info tr:contains(Оригинальное название) td:last-child")
+            .text().ifBlank { title }
 
-        // Определяем тип
         val contentType = when {
             url.contains("/cartoons/") -> TvType.Cartoon
             url.contains("/anime/") -> TvType.Anime
@@ -79,26 +80,33 @@ class Rezka : MainAPI() {
             else -> TvType.Movie
         }
 
-        // --- TMDB ---
-        val tmdbApiKey = "890a864b9b0ab3d5819bc342896d6de5" // 🔑 твой ключ
+        val tmdbApiKey = "890a864b9b0ab3d5819bc342896d6de5"
+
         val tmdbSearchUrl = when (contentType) {
-            TvType.Movie, TvType.OVA ->
+            TvType.Movie, TvType.AnimeMovie ->
                 "https://api.themoviedb.org/3/search/movie?api_key=$tmdbApiKey&language=ru&query=${
-                    URLEncoder.encode(title, StandardCharsets.UTF_8.toString())
-                }&year=$year"
+                    URLEncoder.encode(originalTitle, StandardCharsets.UTF_8.toString())
+                }"
             TvType.Anime, TvType.Cartoon, TvType.TvSeries ->
                 "https://api.themoviedb.org/3/search/tv?api_key=$tmdbApiKey&language=ru&query=${
-                    URLEncoder.encode(title, StandardCharsets.UTF_8.toString())
-                }&first_air_date_year=$year"
+                    URLEncoder.encode(originalTitle, StandardCharsets.UTF_8.toString())
+                }"
             else ->
                 "https://api.themoviedb.org/3/search/multi?api_key=$tmdbApiKey&language=ru&query=${
-                    URLEncoder.encode(title, StandardCharsets.UTF_8.toString())
+                    URLEncoder.encode(originalTitle, StandardCharsets.UTF_8.toString())
                 }"
         }
 
         val tmdbResponse = app.get(tmdbSearchUrl).parsedSafe<Map<String, Any>>()
         val results = tmdbResponse?.get("results") as? List<Map<String, Any>>
-        val first = results?.firstOrNull()
+
+        val first = results
+            ?.filter { r ->
+                val rYear = (r["first_air_date"] as? String)?.take(4)?.toIntOrNull()
+                    ?: (r["release_date"] as? String)?.take(4)?.toIntOrNull()
+                if (year != null && rYear != null) rYear == year else true
+            }
+            ?.firstOrNull()
 
         val backdrop = first?.get("backdrop_path") as? String
         val posterTmdb = first?.get("poster_path") as? String
@@ -106,7 +114,6 @@ class Rezka : MainAPI() {
         val backdropUrl = backdrop?.let { "https://image.tmdb.org/t/p/original$it" }
         val posterUrl = posterTmdb?.let { "https://image.tmdb.org/t/p/w500$it" } ?: poster
 
-        // --- Эпизоды ---
         val episodes = mutableListOf<Episode>()
         doc.select("div.b-simple_episode__item").forEach { ep ->
             val name = ep.select("a").text()
