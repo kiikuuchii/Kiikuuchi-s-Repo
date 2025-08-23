@@ -84,15 +84,8 @@ override suspend fun load(url: String): LoadResponse {
     val poster = doc.select("div.b-post__poster img").attr("src")
     val year = doc.select("table.b-post__info tr:contains(год) td:last-child").text().toIntOrNull()
     val description = doc.select("div.b-post__description_text").text()
-	
-	val tmdbApiKey = "890a864b9b0ab3d5819bc342896d6de5" // 🔑 сюда вставь свой ключ с themoviedb.org
-        val tmdbSearchUrl =
-    "https://api.themoviedb.org/3/search/movie?api_key=$tmdbApiKey&language=ru&query=${
-        URLEncoder.encode(title, StandardCharsets.UTF_8.toString())}"
-        val tmdbResponse = app.get(tmdbSearchUrl).parsedSafe<TmdbSearchResponse>()
-        val tmdbBackdrop = tmdbResponse?.results?.firstOrNull()?.backdrop_path
-        val backdropFull = tmdbBackdrop?.let { "https://image.tmdb.org/t/p/original$it" }
 
+    // 👇 Сначала определяем contentType
     val contentType = when {
         url.contains("/cartoons/") -> TvType.Cartoon
         url.contains("/anime/") -> TvType.Anime
@@ -100,7 +93,34 @@ override suspend fun load(url: String): LoadResponse {
         else -> TvType.Movie
     }
 
-    // собираем список эпизодов
+    // 👇 Потом уже формируем запрос к TMDB (потому что используем contentType)
+    val tmdbApiKey = "890a864b9b0ab3d5819bc342896d6de5" // 🔑 твой ключ
+    val tmdbSearchUrl = when (contentType) {
+        TvType.Movie, TvType.AnimeMovie ->
+            "https://api.themoviedb.org/3/search/movie?api_key=$tmdbApiKey&language=ru&query=${
+                URLEncoder.encode(title, StandardCharsets.UTF_8.toString())
+            }"
+        TvType.Anime, TvType.Cartoon, TvType.TvSeries ->
+            "https://api.themoviedb.org/3/search/tv?api_key=$tmdbApiKey&language=ru&query=${
+                URLEncoder.encode(title, StandardCharsets.UTF_8.toString())
+            }"
+        else ->
+            "https://api.themoviedb.org/3/search/multi?api_key=$tmdbApiKey&language=ru&query=${
+                URLEncoder.encode(title, StandardCharsets.UTF_8.toString())
+            }"
+    }
+
+    // 👇 Здесь уже можно сходить в TMDB и вытащить постеры/задники
+    val tmdbResponse = app.get(tmdbSearchUrl).parsedSafe<Map<String, Any>>()
+    val results = tmdbResponse?.get("results") as? List<Map<String, Any>>
+    val first = results?.firstOrNull()
+    val backdrop = first?.get("backdrop_path") as? String
+    val posterTmdb = first?.get("poster_path") as? String
+
+    val backdropUrl = backdrop?.let { "https://image.tmdb.org/t/p/original$it" }
+    val posterUrl = posterTmdb?.let { "https://image.tmdb.org/t/p/w500$it" } ?: poster
+
+    // 👇 Собираем список эпизодов
     val episodes = mutableListOf<Episode>()
     doc.select("div.b-simple_episode__item").forEach { ep ->
         val name = ep.select("a").text()
@@ -120,14 +140,14 @@ override suspend fun load(url: String): LoadResponse {
         if (episodes.isNotEmpty()) {
             newTvSeriesLoadResponse(title, url, TvType.Cartoon, episodes) {
                 this.posterUrl = poster
-				this.backgroundPosterUrl = backdropFull ?: poster
+				this.backgroundPosterUrl = backdropUrl ?: poster
                 this.year = year
                 this.plot = description
             }
         } else {
             newMovieLoadResponse(title, url, TvType.Cartoon, url) {
                 this.posterUrl = poster
-				this.backgroundPosterUrl = backdropFull ?: poster
+				this.backgroundPosterUrl = backdropUrl ?: poster
                 this.year = year
                 this.plot = description
             }
@@ -138,7 +158,7 @@ override suspend fun load(url: String): LoadResponse {
     if (episodes.isNotEmpty()) {
         newAnimeLoadResponse(title, url, TvType.Anime) {
             this.posterUrl = poster
-			this.backgroundPosterUrl = backdropFull ?: poster
+			this.backgroundPosterUrl = backdropUrl ?: poster
             this.year = year
             this.plot = description
             addEpisodes(DubStatus.Subbed, episodes)
@@ -146,7 +166,7 @@ override suspend fun load(url: String): LoadResponse {
     } else {
         newAnimeLoadResponse(title, url, TvType.Anime) {
             this.posterUrl = poster
-			this.backgroundPosterUrl = backdropFull ?: poster
+			this.backgroundPosterUrl = backdropUrl ?: poster
             this.year = year
             this.plot = description
             }
@@ -157,14 +177,14 @@ override suspend fun load(url: String): LoadResponse {
         if (episodes.isNotEmpty()) {
             newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes) {
                 this.posterUrl = poster
-				this.backgroundPosterUrl = backdropFull ?: poster
+				this.backgroundPosterUrl = backdropUrl ?: poster
                 this.year = year
                 this.plot = description
             }
         } else {
             newMovieLoadResponse(title, url, TvType.Movie, url) {
                 this.posterUrl = poster
-				this.backgroundPosterUrl = backdropFull ?: poster
+				this.backgroundPosterUrl = backdropUrl ?: poster
                 this.year = year
                 this.plot = description
             }
@@ -174,7 +194,7 @@ override suspend fun load(url: String): LoadResponse {
     else -> {
         newMovieLoadResponse(title, url, TvType.Movie, url) {
             this.posterUrl = poster
-			this.backgroundPosterUrl = backdropFull ?: poster
+			this.backgroundPosterUrl = backdropUrl ?: poster
             this.year = year
             this.plot = description
         }
