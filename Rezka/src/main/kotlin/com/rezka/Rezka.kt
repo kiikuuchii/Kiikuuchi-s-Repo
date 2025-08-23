@@ -19,42 +19,42 @@ class Rezka : MainAPI() {
         setOf(TvType.Movie, TvType.TvSeries, TvType.Anime, TvType.Cartoon, TvType.OVA)
 
     override suspend fun search(query: String): List<SearchResponse> {
-        val url = "$mainUrl/search/?do=search&subaction=search&q=$query"
-        val doc = app.get(url).document
+    val url = "$mainUrl/search/?do=search&subaction=search&q=$query"
+    val doc = app.get(url).document
 
-        return doc.select(".b-content__inline_item").map { element ->
-            val href = element.selectFirst("a")!!.attr("href")
-            val title = element.selectFirst(".b-content__inline_item-link")!!.text()
-            val poster = element.selectFirst("img")!!.attr("src")
-            val year = element.selectFirst(".b-content__inline_item-link > div")
-                ?.text()?.toIntOrNull()
+    return doc.select(".b-content__inline_item").map { element ->
+        val href = element.selectFirst("a")!!.attr("href")
+        val title = element.selectFirst(".b-content__inline_item-link")!!.text()
+        val poster = element.selectFirst("img")!!.attr("src")
+        val year = element.selectFirst(".b-content__inline_item-link > div")
+            ?.text()?.toIntOrNull()
 
-            val baseType = when {
-                href.contains("/anime/") -> {
-                    if (title.contains("OVA", true) || title.contains("ОВА", true))
-                        TvType.OVA else TvType.Anime
-                }
-                href.contains("/cartoons/") -> TvType.Cartoon
-                href.contains("/series/") -> TvType.TvSeries
-                else -> TvType.Movie
+        val baseType = when {
+            href.contains("/anime/") -> {
+                if (title.contains("OVA", true) || title.contains("ОВА", true))
+                    TvType.OVA else TvType.Anime
             }
+            href.contains("/cartoons/") -> TvType.Cartoon
+            href.contains("/series/") -> TvType.TvSeries
+            else -> TvType.Movie
+        }
 
-            val episodic = baseType == TvType.TvSeries || baseType == TvType.Anime ||
-                    baseType == TvType.OVA || baseType == TvType.Cartoon
-
-            if (episodic) {
-                newTvSeriesSearchResponse(title, href, baseType) {
-                    this.posterUrl = poster
-                    this.year = year
-                }
-            } else {
-                newMovieSearchResponse(title, href, baseType) {
-                    this.posterUrl = poster
-                    this.year = year
-                }
+        when (baseType) {
+            TvType.Anime, TvType.OVA -> newAnimeSearchResponse(title, href, baseType) {
+                this.posterUrl = poster
+                this.year = year
+            }
+            TvType.Cartoon, TvType.TvSeries -> newTvSeriesSearchResponse(title, href, baseType) {
+                this.posterUrl = poster
+                this.year = year
+            }
+            else -> newMovieSearchResponse(title, href, baseType) {
+                this.posterUrl = poster
+                this.year = year
             }
         }
     }
+}
 
     override suspend fun load(url: String): LoadResponse {
         val doc = app.get(url).document
