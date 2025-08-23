@@ -15,7 +15,6 @@ class Rezka : MainAPI() {
     override var lang = "ru"
     override val hasMainPage = true
 
-    // добавил Cartoon и OVA в список поддерживаемых типов
     override val supportedTypes =
         setOf(TvType.Movie, TvType.TvSeries, TvType.Anime, TvType.Cartoon, TvType.OVA)
 
@@ -30,10 +29,9 @@ class Rezka : MainAPI() {
             val year = element.selectFirst(".b-content__inline_item-link > div")
                 ?.text()?.toIntOrNull()
 
-            // определяем тип из ссылки + быстрая эвристика OVA по названию
             val baseType = when {
                 href.contains("/anime/") -> {
-                    if (title.contains("OVA", ignoreCase = true) || title.contains("ОВА", ignoreCase = true))
+                    if (title.contains("OVA", true) || title.contains("ОВА", true))
                         TvType.OVA else TvType.Anime
                 }
                 href.contains("/cartoons/") -> TvType.Cartoon
@@ -41,9 +39,8 @@ class Rezka : MainAPI() {
                 else -> TvType.Movie
             }
 
-            // В поиске безопасно отдавать TvSeriesSearch для потенциально эпизодных типов
             val episodic = baseType == TvType.TvSeries || baseType == TvType.Anime ||
-                           baseType == TvType.OVA || baseType == TvType.Cartoon
+                    baseType == TvType.OVA || baseType == TvType.Cartoon
 
             if (episodic) {
                 newTvSeriesSearchResponse(title, href, baseType) {
@@ -64,23 +61,18 @@ class Rezka : MainAPI() {
         val title = doc.selectFirst(".b-post__title")!!.text()
         val poster = doc.selectFirst(".b-sidecover img")?.attr("src")
         val year = doc.select(".b-post__info li")
-            .find { it.text().contains("год", ignoreCase = true) }
+            .find { it.text().contains("год", true) }
             ?.text()?.filter { it.isDigit() }?.toIntOrNull()
         val description = doc.selectFirst(".b-post__description_text")?.text()
 
-        // секции сайта
         val isAnimeSection = url.contains("/anime/")
         val isCartoonSection = url.contains("/cartoons/")
         val isSeriesSection = url.contains("/series/")
 
-        // попытка распознать OVA у аниме
         val infoText = doc.select(".b-post__info li").joinToString(" | ") { it.text().lowercase() }
         val isOva = isAnimeSection && (
-            infoText.contains("ova") ||
-            infoText.contains("оva") || // на всякий случай
-            infoText.contains("ова") ||
-            title.contains("OVA", ignoreCase = true) ||
-            title.contains("ОВА", ignoreCase = true)
+            infoText.contains("ova") || infoText.contains("ова") ||
+            title.contains("OVA", true) || title.contains("ОВА", true)
         )
 
         val contentType = when {
@@ -92,43 +84,50 @@ class Rezka : MainAPI() {
         }
 
         val hasEpisodes = doc.select(".b-simple_episode__item").isNotEmpty()
-
-        return if (hasEpisodes) {
-            val episodes = doc.select(".b-simple_episode__item").mapIndexed { index, el ->
-                val epName = el.selectFirst(".b-simple_episode__item-title")?.text()
-                val href = el.selectFirst("a")?.attr("href") ?: url
-                newEpisode(href) {
-                    this.name = epName
-                    this.episode = index + 1
-                }
+        val episodes = doc.select(".b-simple_episode__item").mapIndexed { index, el ->
+            val epName = el.selectFirst(".b-simple_episode__item-title")?.text()
+            val href = el.selectFirst("a")?.attr("href") ?: url
+            newEpisode(href) {
+                this.name = epName
+                this.episode = index + 1
             }
+        }
 
-            newTvSeriesLoadResponse(
-                title,
-                url,
-                contentType, // тут уже НЕ TvSeries для аниме/ова/мультов
-                episodes
-            ) {
-                this.posterUrl = poster
-                this.year = year
-                this.plot = description
-            }
-        } else {
-            newMovieLoadResponse(
-                title,
-                url,
-                contentType, // фильм-аниме → Anime, фильм-мультфильм → Cartoon и т.д.
-                url
-            ) {
-                this.posterUrl = poster
-                this.year = year
-                this.plot = description
+        return when {
+    // Аниме и OVA
+    contentType == TvType.Anime || contentType == TvType.OVA -> {
+        newAnimeLoadResponse(title, url, contentType, false) {
+            this.posterUrl = poster
+            this.year = year
+            this.plot = description
+
+            if (hasEpisodes) {
+                addEpisodes(DubStatus.Subbed, episodes)
             }
         }
     }
 
+    // Сериалы и мультики с эпизодами
+    hasEpisodes -> {
+        newTvSeriesLoadResponse(title, url, contentType, episodes) {
+            this.posterUrl = poster
+            this.year = year
+            this.plot = description
+        }
+    }
+
+    // Фильмы
+    else -> {
+        newMovieLoadResponse(title, url, contentType, url) {
+            this.posterUrl = poster
+            this.year = year
+            this.plot = description
+        }
+    }
+}
+    }
+
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        // реализовано в RezkaMain.kt (extension-функция)
         return loadRezkaMainPage(page)
     }
 }
