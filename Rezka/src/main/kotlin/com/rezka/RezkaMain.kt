@@ -3,59 +3,50 @@ package com.rezka
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
 
-class RezkaMain(private val api: MainAPI) {
-    private val mainUrl = "https://rezka-ua.org"
 
-    suspend fun getMainPage(page: Int): HomePageResponse {
-        val doc = app.get(mainUrl).document
+    suspend fun MainAPI.loadRezkaMainPage(page: Int): HomePageResponse {
+    val url = "https://rezka-ua.org/?filter=watching"
+    val doc = app.get(url).document
 
-        val homeSections = ArrayList<HomePageList>()
+    val films = mutableListOf<SearchResponse>()
+    val series = mutableListOf<SearchResponse>()
+    val cartoons = mutableListOf<SearchResponse>()
+    val anime = mutableListOf<SearchResponse>()
 
-        // Фильмы
-        val movies = doc.select(".b-content__inline_items .b-content__inline_item").mapNotNull {
-            val href = it.selectFirst("a")?.attr("href") ?: return@mapNotNull null
-            val title = it.selectFirst(".b-content__inline_item-link")?.text() ?: return@mapNotNull null
-            val poster = it.selectFirst("img")?.attr("src")
-            val year = it.selectFirst(".b-content__inline_item-link > div")?.text()?.toIntOrNull()
-            api.newMovieSearchResponse(title, href, TvType.Movie) {   // <-- используем api
-                this.posterUrl = poster
-                this.year = year
-            }
-        }
-        homeSections.add(HomePageList("Фильмы", movies))
+    doc.select(".b-content__inline_item").forEach { element ->
+        val href = element.selectFirst("a")?.attr("href") ?: return@forEach
+        val title = element.selectFirst(".b-content__inline_item-link")?.text() ?: return@forEach
+        val poster = element.selectFirst("img")?.attr("src")
+        val year = element.selectFirst(".b-content__inline_item-link > div")?.text()?.toIntOrNull()
 
-        // Сериалы
-        val series = doc.select(".b-content__inline_items .b-content__inline_item").mapNotNull {
-            val href = it.selectFirst("a")?.attr("href") ?: return@mapNotNull null
-            if (!href.contains("/series/")) return@mapNotNull null
-            val title = it.selectFirst(".b-content__inline_item-link")?.text() ?: return@mapNotNull null
-            val poster = it.selectFirst("img")?.attr("src")
-            val year = it.selectFirst(".b-content__inline_item-link > div")?.text()?.toIntOrNull()
-            api.newMovieSearchResponse(title, href, TvType.TvSeries) {
-                this.posterUrl = poster
-                this.year = year
-            }
-        }
-        if (series.isNotEmpty()) {
-            homeSections.add(HomePageList("Сериалы", series))
+        val type = when {
+            href.contains("/films/") -> TvType.Movie
+            href.contains("/series/") -> TvType.TvSeries
+            href.contains("/cartoons/") -> TvType.Cartoon
+            href.contains("/anime/") -> TvType.Anime
+            else -> TvType.Movie
         }
 
-        // Аниме
-        val anime = doc.select(".b-content__inline_items .b-content__inline_item").mapNotNull {
-            val href = it.selectFirst("a")?.attr("href") ?: return@mapNotNull null
-            if (!href.contains("/anime/")) return@mapNotNull null
-            val title = it.selectFirst(".b-content__inline_item-link")?.text() ?: return@mapNotNull null
-            val poster = it.selectFirst("img")?.attr("src")
-            val year = it.selectFirst(".b-content__inline_item-link > div")?.text()?.toIntOrNull()
-            api.newMovieSearchResponse(title, href, TvType.Anime) {
-                this.posterUrl = poster
-                this.year = year
-            }
-        }
-        if (anime.isNotEmpty()) {
-            homeSections.add(HomePageList("Аниме", anime))
+        val item = newMovieSearchResponse(title, href, type) {
+            this.posterUrl = poster
+            this.year = year
         }
 
-        return newHomePageResponse(homeSections)
+        when (type) {
+            TvType.Movie -> films.add(item)
+            TvType.TvSeries -> series.add(item)
+            TvType.Cartoon -> cartoons.add(item)
+            TvType.Anime -> anime.add(item)
+            else -> {}
+        }
     }
+
+    return newHomePageResponse(
+        listOf(
+            HomePageList("🎬 Фильмы", films),
+            HomePageList("📺 Сериалы", series),
+            HomePageList("🎞️ Мультфильмы", cartoons),
+            HomePageList("🍥 Аниме", anime)
+        )
+    )
 }

@@ -12,6 +12,7 @@ import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.SubtitleFile
 import com.lagradost.cloudstream3.LoadResponse.Companion.addActors
 import org.jsoup.nodes.Document
+import com.rezka.loadRezkaMainPage
 import org.jsoup.Jsoup
 
 class Rezka : MainAPI() {
@@ -104,6 +105,6 @@ class Rezka : MainAPI() {
     }
 	
 	override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-    return RezkaMain(this).getMainPage(page)
+    return loadRezkaMainPage(page)
     }
 }
