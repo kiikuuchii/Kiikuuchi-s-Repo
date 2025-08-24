@@ -89,6 +89,14 @@ class Rezka : MainAPI() {
 
     tags.addAll(genres)
 	
+	val actors = document.select("div.persons-list-holder span.person-name-item").mapNotNull { el ->
+        val name = el.selectFirst("[itemprop=name]")?.text()?.trim()
+        val photo = el.attr("data-photo")?.takeIf { it.isNotBlank() }
+        if (name != null) {
+            ActorData(Actor(name, photo)) // ✅ правильно
+        } else null
+    }
+	
 	
 
     // --- Эпизоды ---
@@ -108,6 +116,7 @@ class Rezka : MainAPI() {
             this.year = year
             this.plot = description
             this.tags = tags
+			this.actors = actors
             if (episodes.isNotEmpty()) {
                 addEpisodes(DubStatus.Subbed, episodes)
             }
@@ -117,12 +126,14 @@ class Rezka : MainAPI() {
             this.year = year
             this.plot = description
             this.tags = tags
+			this.actors = actors
         }
         else -> newMovieLoadResponse(title, url, contentType, url) {
             this.posterUrl = poster
             this.year = year
             this.plot = description
             this.tags = tags
+			this.actors = actors
         }
     }
 }
