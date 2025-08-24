@@ -65,7 +65,7 @@ class Rezka : MainAPI() {
 
     // --- Определяем тип по жанру, а не только по url ---
     val genresText = document.select("table.b-post__info tr:contains(Жанр:)").text().lowercase()
-	val genres = document.select("table.b-post__info tr:contains(Жанр:) td:last-child a span[itemprop=genre]")
+	val genres = document.select("tr:has(td h2:matches((?i)Жанр)) td:eq(1) a span[itemprop=genre]")
         .map { it.text().trim() }
 
     val isAnime = genres.any { it.equals("Аниме", ignoreCase = true) }
