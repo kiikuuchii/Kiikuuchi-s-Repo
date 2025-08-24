@@ -5,78 +5,52 @@ import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.ExtractorLinkType
 import com.lagradost.cloudstream3.utils.Qualities
 import com.lagradost.cloudstream3.utils.newExtractorLink
+import org.jsoup.Jsoup
 import org.json.JSONObject
 
 object RezkaExtractor {
-
-    suspend fun getUrl(
-        pageUrl: String,
-        season: Int? = null,
-        episode: Int? = null
-    ): List<ExtractorLink>? {
+    suspend fun getUrls(pageUrl: String): List<ExtractorLink>? {
         val doc = app.get(pageUrl).document
 
-        val id = doc.selectFirst("#ctrl_holder")?.attr("data-id") ?: return null
-        val translatorId = doc.selectFirst("#ctrl_holder")?.attr("data-translator_id") ?: return null
+        // --- iframe плеера ---
+        val iframe = doc.selectFirst("iframe#iframe-player")?.attr("src")
+            ?: return null
 
-        val isSeries = doc.select(".b-simple_episode__item").isNotEmpty()
+        // --- грузим сам iframe ---
+        val iframeHtml = app.get(iframe, referer = pageUrl).text
 
-        val ajaxUrl = if (isSeries) {
-            "https://rezka-ua.org/ajax/get_cdn_series/"
-        } else {
-            "https://rezka-ua.org/ajax/get_cdn_movies/"
-        }
+        // В iframe есть JSON вида: "streams": {"1080p": "https://....m3u8", "720p": "..."}
+        val regex = Regex("\"streams\"\\s*:\\s*\\{([^}]+)\\}")
+        val match = regex.find(iframeHtml) ?: return null
 
-        val postData = mutableMapOf(
-            "id" to id,
-            "translator_id" to translatorId,
-        )
-
-        if (isSeries) {
-            postData["season"] = season?.toString() ?: "1"
-            postData["episode"] = episode?.toString() ?: "1"
-            postData["action"] = "get_stream"
-        } else {
-            postData["action"] = "get_movie"
-        }
-
-        val response = app.post(
-            ajaxUrl,
-            data = postData,
-            referer = pageUrl
-        ).text
-
-        val json = JSONObject(response)
-        if (!json.has("url")) return null
-
-        val qualities = json.optJSONObject("qualities") ?: return null
-        val iframe = pageUrl
+        val jsonString = "{${match.groupValues[1]}}"
+        val json = JSONObject(jsonString)
 
         val links = mutableListOf<ExtractorLink>()
 
-        qualities.keys().forEach { quality ->
-            val videoUrl = qualities.getString(quality)
-            val q = when (quality) {
-                "360p" -> Qualities.P360
-                "480p" -> Qualities.P480
-                "720p" -> Qualities.P720
-                "1080p" -> Qualities.P1080
-                else -> Qualities.Unknown
+        for (key in json.keys()) {
+            val videoUrl = json.getString(key)
+            val quality = when (key) {
+                "1080p" -> Qualities.P1080.value
+                "720p" -> Qualities.P720.value
+                "480p" -> Qualities.P480.value
+                "360p" -> Qualities.P360.value
+                else -> Qualities.Unknown.value
             }
 
             links.add(
-    newExtractorLink(
-        source = "Rezka",
-        name = "Rezka $quality",
-        url = videoUrl,
-        type = if (videoUrl.endsWith(".m3u8")) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
-    ) {
-        this.quality = q.value  // <-- берём значение Int
-        this.headers = mapOf("Referer" to iframe) // <-- вместо this.referer
-    }
-)
+                newExtractorLink(
+                    source = "Rezka",
+                    name = "Rezka $key",
+                    url = videoUrl,
+                    type = if (videoUrl.endsWith(".m3u8")) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
+                ) {
+                    this.quality = quality
+                    this.headers = mapOf("Referer" to iframe)
+                }
+            )
         }
 
-        return links
+        return if (links.isNotEmpty()) links else null
     }
 }

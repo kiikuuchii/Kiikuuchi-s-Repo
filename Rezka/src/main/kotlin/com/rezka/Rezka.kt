@@ -156,14 +156,9 @@ class Rezka : MainAPI() {
     subtitleCallback: (SubtitleFile) -> Unit,
     callback: (ExtractorLink) -> Unit
 ): Boolean {
-    // `data` — это URL страницы на rezka-ua.org
-    val links = RezkaExtractor.getUrl(data) ?: return false
-
-    links.forEach { link ->
-        callback(link)
-    }
-
-    return links.isNotEmpty()
+    val links = RezkaExtractor.getUrls(data) ?: return false
+    links.forEach(callback)
+    return true
 }
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
