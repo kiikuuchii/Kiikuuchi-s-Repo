@@ -150,14 +150,14 @@ class Rezka : MainAPI() {
     }
 }
 
-        override suspend fun loadLinks(
+       override suspend fun loadLinks(
     data: String,
     isCasting: Boolean,
     subtitleCallback: (SubtitleFile) -> Unit,
     callback: (ExtractorLink) -> Unit
 ): Boolean {
-    val links = RezkaExtractor.getUrls(data) ?: return false
-    links.forEach(callback)
+    val links = RezkaExtractor.getUrl(data) ?: return false
+    links.forEach { link -> callback(link) }
     return true
 }
 
