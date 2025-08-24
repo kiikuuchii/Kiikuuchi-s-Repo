@@ -156,12 +156,12 @@ class Rezka : MainAPI() {
     subtitleCallback: (SubtitleFile) -> Unit,
     callback: (ExtractorLink) -> Unit
 ): Boolean {
-    val extractor = RezkaExtractor()
-    val links = extractor.getUrl(data, null) ?: return false
+    // Вытащим iframe через RezkaExtractor
+    val iframeUrl = RezkaExtractor.getIframeUrl(data) ?: return false
 
-    links.forEach { link: ExtractorLink ->
-        callback(link)
-    }
+    // Отдаём iframe Cloudstream'у, он сам распарсит m3u8 и все качества
+    loadExtractor(iframeUrl, data, subtitleCallback, callback)
+
     return true
 }
 
