@@ -65,6 +65,8 @@ class Rezka : MainAPI() {
 
     // --- Определяем тип по жанру, а не только по url ---
     val genresText = document.select("table.b-post__info tr:contains(Жанр:)").text().lowercase()
+	val genres = document.select("table.b-post__info tr:contains(Жанр:) a")
+        .map { it.text().trim() }
 
     val isAnime = genresText.contains("аниме")
     val isCartoon = genresText.contains("мультфильм")
@@ -76,6 +78,13 @@ class Rezka : MainAPI() {
         hasEpisodes -> TvType.TvSeries
         else -> TvType.Movie
     }
+	
+	val tags = genres.toMutableList()
+    if (isAnime && !"Аниме".equals(tags.find { it.equals("Аниме", true) }, true)) {
+        tags.add("Аниме") // <<< принудительно добавляем тег Аниме
+    }
+	
+	
 
     // --- Эпизоды ---
     val episodes = document.select(".b-simple_episode__item").mapIndexed { index, el ->
@@ -93,6 +102,7 @@ class Rezka : MainAPI() {
             this.posterUrl = poster
             this.year = year
             this.plot = description
+			this.tags = tags
             if (episodes.isNotEmpty()) {
                 addEpisodes(DubStatus.Subbed, episodes)
             }
@@ -101,11 +111,13 @@ class Rezka : MainAPI() {
             this.posterUrl = poster
             this.year = year
             this.plot = description
+			this.tags = tags
         }
         else -> newMovieLoadResponse(title, url, contentType, url) {
             this.posterUrl = poster
             this.year = year
             this.plot = description
+			this.tags = tags
         }
     }
 }
