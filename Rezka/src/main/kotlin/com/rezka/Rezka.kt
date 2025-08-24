@@ -7,6 +7,7 @@ import com.lagradost.cloudstream3.TvType
 import com.lagradost.cloudstream3.SearchResponse
 import com.lagradost.cloudstream3.LoadResponse
 import com.rezka.loadRezkaMainPage
+import com.lagradost.cloudstream3.utils.ExtractorLink
 import org.jsoup.Jsoup
 
 class Rezka : MainAPI() {
@@ -147,6 +148,21 @@ class Rezka : MainAPI() {
 			this.actors = people
         }
     }
+}
+
+        override suspend fun loadLinks(
+    data: String,
+    isCasting: Boolean,
+    subtitleCallback: (SubtitleFile) -> Unit,
+    callback: (ExtractorLink) -> Unit
+): Boolean {
+    val extractor = RezkaExtractor()
+    val links = extractor.getUrl(data, null) ?: return false
+
+    links.forEach { link: ExtractorLink ->
+        callback(link)
+    }
+    return true
 }
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
