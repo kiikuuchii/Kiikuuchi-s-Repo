@@ -61,7 +61,11 @@ class Rezka : MainAPI() {
     val title = document.selectFirst("div.b-post__title h1")?.text() ?: return null
     val poster = document.selectFirst("div.b-sidecover img")?.attr("src")
     val description = document.selectFirst("div.b-post__description_text")?.text()
-    val year = document.select("table.b-post__info tr:contains(Год:) td").text().toIntOrNull()
+    val yearText = document
+        .select("tr:has(td h2:matches((?i)Дата выхода)) td:eq(1) a")
+        .text()
+        .trim()
+    val year = yearText.filter { it.isDigit() }.toIntOrNull()
 
     // --- Определяем тип по жанру, а не только по url ---
     val genresText = document.select("table.b-post__info tr:contains(Жанр:)").text().lowercase()
