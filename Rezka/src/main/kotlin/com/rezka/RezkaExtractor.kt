@@ -1,26 +1,33 @@
 package com.rezka
 
-import com.lagradost.cloudstream3.app
 import com.lagradost.cloudstream3.utils.ExtractorLink
-import com.lagradost.cloudstream3.utils.Qualities
 import com.lagradost.cloudstream3.utils.M3u8Helper
-import com.lagradost.cloudstream3.utils.ExtractorLinkType
+import com.lagradost.cloudstream3.app
 
-object RezkaExtractor {
-    suspend fun getUrl(iframeUrl: String): List<ExtractorLink>? {
-        val response = app.get(iframeUrl).document
-        val script = response.select("script:containsData(m3u8)").firstOrNull()?.data()
-            ?: return null
+class RezkaExtractor {
+    suspend fun getM3u8Links(
+        url: String,
+        callback: (ExtractorLink) -> Unit
+    ): Boolean {
+        // Загружаем HTML страницы
+        val doc = app.get(url).document
 
-        val regex = Regex("https[^'\"]+\\.m3u8")
-        val m3u8Url = regex.find(script)?.value ?: return null
+        // Ищем ссылку на manifest.m3u8
+        val scriptText = doc.select("script").joinToString("\n") { it.data() }
+        val regex = Regex("""https[^"']+manifest\.m3u8""")
+        val m3u8Url = regex.find(scriptText)?.value
 
-        return M3u8Helper.generateM3u8(
-            "Rezka",
-            m3u8Url,
-            iframeUrl,
-            Qualities.Unknown.value,
-            headers = mapOf("Referer" to iframeUrl)
-        )
+        if (m3u8Url.isNullOrBlank()) return false
+
+        println("✅ Нашли m3u8: $m3u8Url")
+
+        // Используем правильные параметры для SDK
+        M3u8Helper.generateM3u8(
+            source = "Rezka",
+            streamUrl = m3u8Url,
+            referer = url
+        ).forEach(callback)
+
+        return true
     }
 }
