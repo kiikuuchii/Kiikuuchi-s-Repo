@@ -89,13 +89,24 @@ class Rezka : MainAPI() {
 
     tags.addAll(genres)
 	
-	val actors = document.select("div.persons-list-holder span.person-name-item").mapNotNull { el ->
-        val name = el.selectFirst("[itemprop=name]")?.text()?.trim()
-        val photo = el.attr("data-photo")?.takeIf { it.isNotBlank() }
-        if (name != null) {
-            ActorData(Actor(name, photo)) // ✅ правильно
-        } else null
-    }
+	// --- Актёры ---
+    val actors = document.select("div.persons-list-holder span.person-name-item[data-job=Актер], span.person-name-item[data-job=Актриса]")
+        .mapNotNull { el ->
+            val name = el.selectFirst("[itemprop=name]")?.text()?.trim()
+            val photo = el.attr("data-photo")?.takeIf { it.isNotBlank() }
+            if (name != null) ActorData(Actor(name, photo), roleString = "Актёр") else null
+        }
+
+    // --- Режиссёры ---
+    val directors = document.select("div.persons-list-holder span.person-name-item[data-job=Режиссер]")
+        .mapNotNull { el ->
+            val name = el.selectFirst("[itemprop=name]")?.text()?.trim()
+            val photo = el.attr("data-photo")?.takeIf { it.isNotBlank() }
+            if (name != null) ActorData(Actor(name, photo), roleString = "Режиссёр") else null
+        }
+
+    // --- Общий список ---
+    val people = actors + directors
 	
 	
 
@@ -116,7 +127,7 @@ class Rezka : MainAPI() {
             this.year = year
             this.plot = description
             this.tags = tags
-			this.actors = actors
+			this.actors = people
             if (episodes.isNotEmpty()) {
                 addEpisodes(DubStatus.Subbed, episodes)
             }
@@ -126,14 +137,14 @@ class Rezka : MainAPI() {
             this.year = year
             this.plot = description
             this.tags = tags
-			this.actors = actors
+			this.actors = people
         }
         else -> newMovieLoadResponse(title, url, contentType, url) {
             this.posterUrl = poster
             this.year = year
             this.plot = description
             this.tags = tags
-			this.actors = actors
+			this.actors = people
         }
     }
 }
