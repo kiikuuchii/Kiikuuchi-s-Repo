@@ -156,13 +156,8 @@ class Rezka : MainAPI() {
     subtitleCallback: (SubtitleFile) -> Unit,
     callback: (ExtractorLink) -> Unit
 ): Boolean {
-    return RezkaExtractor().loadAll(
-        pageUrl = data,
-        subtitleCallback = subtitleCallback,
-        callback = callback
-    )
+    return RezkaExtractor().loadAll(data, subtitleCallback, callback)
 }
-
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
         return loadRezkaMainPage(page)
