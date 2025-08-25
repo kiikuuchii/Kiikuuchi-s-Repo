@@ -10,111 +10,104 @@ import com.lagradost.cloudstream3.SubtitleFile
 import org.json.JSONObject
 
 class RezkaExtractor {
+
     suspend fun loadAll(
         pageUrl: String,
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        // сначала пробуем найти .m3u8 прямо на странице
-        val quick = loadFromInlineM3u8(pageUrl, callback)
-        if (quick) return true
-
-        // если не нашли — идём через ajax
+        debug("Открываем страницу: $pageUrl")
         return loadFromAjax(pageUrl, subtitleCallback, callback)
     }
 
-    // -------- поиск m3u8 в <script> --------
-    private suspend fun loadFromInlineM3u8(
+    private suspend fun loadFromAjax(
         pageUrl: String,
+        subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
+        val baseUrl = Regex("""https?://[^/]+""").find(pageUrl)?.value ?: pageUrl
         val doc = app.get(pageUrl).document
-        val scriptText = doc.select("script").joinToString("\n") { it.data() ?: "" }
+        val text = doc.outerHtml()
 
-        val regex = Regex("""https?://[^\s"']+?\.m3u8""")
-        val urls = regex.findAll(scriptText).map { it.value }.toList().distinct()
-        if (urls.isEmpty()) return false
+        // Парсим id и переводчика
+        val id = firstGroup(Regex("""data-(?:id|movie-id)=['"](\d+)['"]"""), text)
+        val translator = firstGroup(Regex("""data-(?:translator|translator_id)=['"](\d+)['"]"""), text)
+        debug("Нашли id=$id, translator=$translator")
 
-        for (url in urls) {
-            M3u8Helper.generateM3u8(
-                source = "Rezka",
-                streamUrl = url,
-                referer = pageUrl
-            ).forEach { link -> callback(link) }
+        if (id.isNullOrBlank() || translator.isNullOrBlank()) {
+            debug("❌ Не удалось найти id или translator_id")
+            return false
         }
-        return true
-    }
 
-    // -------- ajax-запрос --------
-    private suspend fun loadFromAjax(
-    pageUrl: String,
-    subtitleCallback: (SubtitleFile) -> Unit,
-    callback: (ExtractorLink) -> Unit
-): Boolean {
-    val baseUrl = Regex("""https?://[^/]+""").find(pageUrl)?.value ?: pageUrl
-    val doc = app.get(pageUrl).document
-    val text = doc.outerHtml()
-
-    val id = firstGroup(Regex("""data-(?:id|movie-id)=['"](\d+)['"]"""), text)
-    val translator = firstGroup(Regex("""data-(?:translator|translator_id)=['"](\d+)['"]"""), text)
-
-    if (id.isNullOrBlank() || translator.isNullOrBlank()) return false
-
-    val actions = listOf(
-        "get_movie" to "$baseUrl/ajax/get_cdn_movie/",
-        "get_movie" to "$baseUrl/ajax/get_cdn_series/"
-    )
-
-    for ((action, ajaxUrl) in actions) {
-        val form = mapOf(
-            "id" to id,
-            "translator_id" to translator,
-            "action" to action
+        val ajaxUrls = listOf(
+            "$baseUrl/ajax/get_cdn_movie/",
+            "$baseUrl/ajax/get_cdn_series/"
         )
-        val headers = mapOf(
-            "Referer" to pageUrl,
-            "Origin" to baseUrl,
-            "X-Requested-With" to "XMLHttpRequest"
-        )
-
-        val response = app.post(ajaxUrl, data = form, headers = headers).text
-        println("Rezka AJAX response: $response") // 🔍 смотри в логах
-
-        val json = JSONObject(response)
-        val encoded = json.optString("url")
-        if (encoded.isBlank()) continue
-
-        val decoded = decodeRezkaUrl(encoded)
-        val regex = Regex("""\[(.+?)\]([^\s,\[]+)""")
-        val matches = regex.findAll(decoded).map { it.groupValues[1] to it.groupValues[2] }.toList()
 
         var ok = false
-        for ((qualityName, link) in matches) {
-            val url = link.replace("\\u0026", "&")
-            val quality = getQualityFromName(qualityName)
-            newExtractorLink(
-                source = "Rezka",
-                name = "Rezka $qualityName",
-                url = url,
-                type = ExtractorLinkType.M3U8
-            ) {
-                this.referer = pageUrl
-                this.quality = quality
-            }.also(callback)
-            ok = true
+        for (ajaxUrl in ajaxUrls) {
+            try {
+                debug("Пробуем ajax: $ajaxUrl")
+
+                val form = mapOf(
+                    "id" to id,
+                    "translator_id" to translator,
+                    "action" to "get_movie"
+                )
+                val headers = mapOf(
+                    "Referer" to pageUrl,
+                    "Origin" to baseUrl,
+                    "X-Requested-With" to "XMLHttpRequest"
+                )
+
+                val response = app.post(ajaxUrl, data = form, headers = headers).text
+                debug("AJAX ответ: ${response.take(200)}")
+
+                val json = JSONObject(response)
+                val encoded = json.optString("url")
+                if (encoded.isBlank()) continue
+
+                val decoded = decodeRezkaUrl(encoded)
+                debug("Декодированная строка: ${decoded.take(200)}")
+
+                val regex = Regex("""\[(.+?)\]([^\s,\[]+)""")
+                val matches = regex.findAll(decoded).map { it.groupValues[1] to it.groupValues[2] }.toList()
+
+                for ((qualityName, link) in matches) {
+                    val url = link.replace("\\u0026", "&")
+                    val quality = getQualityFromName(qualityName)
+
+                    newExtractorLink(
+                        source = "Rezka",
+                        name = "Rezka $qualityName",
+                        url = url,
+                        type = ExtractorLinkType.M3U8
+                    ) {
+                        this.referer = pageUrl
+                        this.quality = quality
+                    }.also(callback)
+
+                    debug("✅ Нашли поток: $qualityName → $url")
+                    ok = true
+                }
+
+                // субтитры
+                val sub = json.optString("subtitle")
+                if (sub.isNotBlank()) {
+                    subtitleCallback(SubtitleFile("ru", baseUrl + sub))
+                    debug("Добавили субтитры: $sub")
+                }
+
+                if (ok) break
+
+            } catch (e: Exception) {
+                debug("Ошибка ajax: ${e.message}")
+            }
         }
 
-        // субтитры
-        val sub = json.optString("subtitle")
-        if (sub.isNotBlank()) {
-            subtitleCallback(SubtitleFile("ru", baseUrl + sub))
-        }
-
-        if (ok) return true
+        if (!ok) debug("❌ Не нашли ссылки ни через movie, ни через series")
+        return ok
     }
-
-    return false
-}
 
     // -------- хелперы --------
     private fun firstGroup(regex: Regex, text: String): String? =
@@ -127,5 +120,9 @@ class RezkaExtractor {
         } catch (_: Throwable) {
             ""
         }
+    }
+
+    private fun debug(msg: String) {
+        println("[RezkaExtractor] $msg")
     }
 }
