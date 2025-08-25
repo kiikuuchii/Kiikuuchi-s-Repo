@@ -151,14 +151,16 @@ class Rezka : MainAPI() {
 }
 
         override suspend fun loadLinks(
-    data: String,
-    isCasting: Boolean,
-    subtitleCallback: (SubtitleFile) -> Unit,
-    callback: (ExtractorLink) -> Unit
-): Boolean {
-    val extractor = RezkaExtractor()
-    return extractor.loadLinks(data, subtitleCallback, callback)
-}
+        data: String,
+        isCasting: Boolean,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ): Boolean {
+        // 📌 Логируем, какой именно URL пришёл
+        println("Rezka.kt :: loadLinks called with data = $data")
+
+        return RezkaExtractor().loadLinks(data, subtitleCallback, callback)
+    }
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
         return loadRezkaMainPage(page)
