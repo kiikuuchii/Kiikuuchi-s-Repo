@@ -7,15 +7,11 @@ import com.lagradost.cloudstream3.TvType
 import com.lagradost.cloudstream3.SearchResponse
 import com.lagradost.cloudstream3.LoadResponse
 import com.rezka.loadRezkaMainPage
+import com.lagradost.cloudstream3.utils.M3u8Helper
+import com.lagradost.cloudstream3.utils.Qualities
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.newExtractorLink
-import com.lagradost.cloudstream3.utils.ExtractorLinkType
-import com.lagradost.cloudstream3.mvvm.safeApiCall
-import com.lagradost.cloudstream3.utils.Qualities
-import com.lagradost.cloudstream3.utils.M3u8Helper
-import com.lagradost.cloudstream3.SubtitleFile
-import com.lagradost.cloudstream3.Episode
-import com.lagradost.cloudstream3.DubStatus
+import java.util.Base64
 import org.jsoup.Jsoup
 
 
@@ -159,44 +155,15 @@ class Rezka : MainAPI() {
     }
 }
 
-         override suspend fun loadLinks(
+override suspend fun loadLinks(
     data: String,
     isCasting: Boolean,
     subtitleCallback: (SubtitleFile) -> Unit,
     callback: (ExtractorLink) -> Unit
 ): Boolean {
-    val doc = app.get(data).document
-
-    // Список озвучек/переводов
-    val translators = doc.select("ul#translators-list a")
-
-    for (eps in translators) {
-        val dub = eps.text().trim()
-        val url = eps.attr("href")
-
-        // Загружаем страницу озвучки
-        val subDoc = app.get(url).document
-
-        // Находим скрипт с JSON плейлистом
-        val scriptData = subDoc.select("script:containsData(file)").html()
-
-        // Достаём ссылку
-        val m3uLink = Regex("\"file\"\\s*:\\s*\"([^\"]+)\"")
-            .find(scriptData)?.groupValues?.get(1)
-
-        if (m3uLink != null) {
-            callback(
-                newExtractorLink(
-                    source = "Rezka",
-                    name = dub.ifEmpty { "Rezka" },
-                    url = m3uLink,
-                    type = ExtractorLinkType.VIDEO
-                )
-            )
-        }
-    }
-
-    return true
+    val links = com.rezka.RezkaExtractor.getLinks(data)
+    links.forEach(callback)
+    return links.isNotEmpty()
 }
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
