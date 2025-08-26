@@ -161,9 +161,48 @@ override suspend fun loadLinks(
     subtitleCallback: (SubtitleFile) -> Unit,
     callback: (ExtractorLink) -> Unit
 ): Boolean {
-    val links = com.rezka.RezkaExtractor.getLinks(data)
-    links.forEach(callback)
-    return links.isNotEmpty()
+    val document = app.get(data).document
+
+    // ищем скрипт с initCDN
+    val script = document.selectFirst("script:containsData(initCDN)")?.data()
+        ?: return false
+
+    // достаём base64 ссылки
+    val regex = Regex("['\"]?file['\"]?\\s*:\\s*['\"]([^'\"]+)['\"]")
+    val matches = regex.findAll(script)
+
+    var found = false
+
+    for (match in matches) {
+        val encoded = match.groupValues[1]
+        val decoded = try {
+            String(android.util.Base64.decode(encoded, android.util.Base64.DEFAULT))
+        } catch (e: Exception) {
+            continue
+        }
+
+        // проверяем .m3u8 или mp4
+        if (decoded.contains(".m3u8")) {
+            val items = M3u8Helper.generateM3u8(
+                source = "Rezka",
+                streamUrl = decoded,
+                referer = mainUrl
+            )
+            items.forEach { callback(it) }
+            found = true
+        } else {
+            callback(
+                newExtractorLink(
+                    source = "Rezka",
+                    name = "Rezka",
+                    url = decoded
+                )
+            )
+            found = true
+        }
+    }
+
+    return found
 }
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
