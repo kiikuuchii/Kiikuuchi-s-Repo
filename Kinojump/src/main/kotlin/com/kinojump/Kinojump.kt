@@ -2,11 +2,10 @@ package com.kinojump
 
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
-import com.lagradost.cloudstream3.MainAPI
-import com.lagradost.cloudstream3.TvType
-import com.lagradost.cloudstream3.SearchResponse
-import com.lagradost.cloudstream3.LoadResponse
-import com.lagradost.cloudstream3.HomePageResponse
+import org.jsoup.Jsoup
+
+// импортируем функцию из отдельного файла
+import com.kinojump.loadKinojumpMainPage
 
 class Kinojump : MainAPI() {
     override var mainUrl = "https://kinojump.com"
@@ -17,14 +16,21 @@ class Kinojump : MainAPI() {
     override val supportedTypes =
         setOf(TvType.Movie, TvType.TvSeries, TvType.Anime, TvType.Cartoon, TvType.OVA)
 
+    private val USER_AGENT =
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36"
+
+    override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse? {
+    return loadKinojumpMainPage(page)
+}
+
     override suspend fun search(query: String): List<SearchResponse> {
         val url = "$mainUrl/index.php?do=search&subaction=search&story=$query"
-        val doc = app.get(url).document
+        val doc = app.get(url, headers = mapOf("User-Agent" to USER_AGENT)).document
 
-        return doc.select(".short-list .short-item").map { element ->
-            val href = fixUrl(element.selectFirst("a")!!.attr("href"))
-            val title = element.selectFirst(".short-title")!!.text()
-            val poster = fixUrl(element.selectFirst(".short-img-holder img")!!.attr("src"))
+        return doc.select(".short-list .short-item").mapNotNull { element ->
+            val href = fixUrl(element.selectFirst("a")?.attr("href") ?: return@mapNotNull null)
+            val title = element.selectFirst(".short-title")?.text() ?: return@mapNotNull null
+            val poster = element.selectFirst(".short-img-holder img")?.attr("data-src")?.let { fixUrl(it) }
             val year = element.selectFirst(".short-date")?.text()?.toIntOrNull()
 
             val baseType = when {
@@ -37,15 +43,13 @@ class Kinojump : MainAPI() {
                 else -> TvType.Movie
             }
 
-            val episodic = baseType != TvType.Movie
-
-            if (episodic) {
-                newTvSeriesSearchResponse(title, href, baseType) {
+            if (baseType == TvType.Movie) {
+                newMovieSearchResponse(title, href, baseType) {
                     this.posterUrl = poster
                     this.year = year
                 }
             } else {
-                newMovieSearchResponse(title, href, baseType) {
+                newTvSeriesSearchResponse(title, href, baseType) {
                     this.posterUrl = poster
                     this.year = year
                 }
@@ -54,10 +58,10 @@ class Kinojump : MainAPI() {
     }
 
     override suspend fun load(url: String): LoadResponse? {
-        val document = app.get(url).document
+        val document = app.get(url, headers = mapOf("User-Agent" to USER_AGENT)).document
 
-        val title = document.selectFirst("h1.fstory-title")?.text() ?: return null
-        val poster = document.selectFirst(".fstory-img img")?.attr("src")?.let { fixUrl(it) }
+        val title = document.selectFirst("h1.post-title")?.text() ?: return null
+        val poster = document.selectFirst(".fstory-img img")?.attr("data-src")?.let { fixUrl(it) }
         val description = document.selectFirst(".fstory-content")?.text()
 
         val genres = document.select(".fstory-line:contains(Жанр) a")
@@ -109,9 +113,5 @@ class Kinojump : MainAPI() {
                 this.tags = tags
             }
         }
-    }
-	
-    override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse? {
-        return loadKinojumpMainPage(page)
     }
 }
