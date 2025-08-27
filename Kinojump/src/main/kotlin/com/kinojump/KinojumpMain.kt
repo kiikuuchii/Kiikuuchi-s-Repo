@@ -7,6 +7,10 @@ suspend fun MainAPI.loadKinojumpMainPage(page: Int): HomePageResponse? {
     val USER_AGENT =
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36"
 
+    fun String.fixKinojumpUrl(): String {
+        return this.replace("web.kinojump.com", "kinojump.com")
+    }
+
     val categories = listOf(
         "Фильмы" to "$mainUrl/films/page/$page",
         "Сериалы" to "$mainUrl/serials/page/$page",
@@ -19,10 +23,11 @@ suspend fun MainAPI.loadKinojumpMainPage(page: Int): HomePageResponse? {
         val doc = app.get(url, headers = mapOf("User-Agent" to USER_AGENT)).document
 
         val items = doc.select(".poster.grid-item").mapNotNull { el ->
-            val href = el.selectFirst(".poster__title a")?.attr("href")?.let { fixUrl(it) }
+            val href = el.selectFirst(".poster__title a")?.attr("href")
+                ?.let { fixUrl(it).fixKinojumpUrl() }
                 ?: return@mapNotNull null
             val name = el.selectFirst(".poster__title")?.text() ?: return@mapNotNull null
-            val poster = el.selectFirst("img")?.attr("data-src")?.let { fixUrl(it) }
+            val poster = el.selectFirst("img")?.attr("src")?.let { fixUrl(it) }
             val typeText = el.selectFirst(".poster__subtitle li:last-child")?.text()?.lowercase()
 
             val type = when {
