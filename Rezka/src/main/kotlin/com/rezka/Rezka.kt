@@ -7,9 +7,6 @@ import com.lagradost.cloudstream3.TvType
 import com.lagradost.cloudstream3.SearchResponse
 import com.lagradost.cloudstream3.LoadResponse
 import com.rezka.loadRezkaMainPage
-import com.lagradost.cloudstream3.utils.M3u8Helper
-import com.lagradost.cloudstream3.utils.Qualities
-import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.newExtractorLink
 import java.util.Base64
 import org.jsoup.Jsoup
@@ -156,54 +153,25 @@ class Rezka : MainAPI() {
 }
 
 override suspend fun loadLinks(
-    data: String,
-    isCasting: Boolean,
-    subtitleCallback: (SubtitleFile) -> Unit,
-    callback: (ExtractorLink) -> Unit
-): Boolean {
-    val document = app.get(data).document
-
-    // ищем скрипт с initCDN
-    val script = document.selectFirst("script:containsData(initCDN)")?.data()
-        ?: return false
-
-    // достаём base64 ссылки
-    val regex = Regex("['\"]?file['\"]?\\s*:\\s*['\"]([^'\"]+)['\"]")
-    val matches = regex.findAll(script)
-
-    var found = false
-
-    for (match in matches) {
-        val encoded = match.groupValues[1]
-        val decoded = try {
-            String(android.util.Base64.decode(encoded, android.util.Base64.DEFAULT))
+        data: String,
+        isCasting: Boolean,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ): Boolean {
+        try {
+            val extractor = RezkaExtractor()
+            extractor.getUrl(
+                data,
+                referer = mainUrl,
+                subtitleCallback = subtitleCallback,
+                callback = callback
+            )
+            return true
         } catch (e: Exception) {
-            continue
+            e.printStackTrace()
         }
-
-        // проверяем .m3u8 или mp4
-        if (decoded.contains(".m3u8")) {
-            val items = M3u8Helper.generateM3u8(
-                source = "Rezka",
-                streamUrl = decoded,
-                referer = mainUrl
-            )
-            items.forEach { callback(it) }
-            found = true
-        } else {
-            callback(
-                newExtractorLink(
-                    source = "Rezka",
-                    name = "Rezka",
-                    url = decoded
-                )
-            )
-            found = true
-        }
+        return false
     }
-
-    return found
-}
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
         return loadRezkaMainPage(page)
