@@ -13,7 +13,7 @@ import org.jsoup.Jsoup
 
 
 class Rezka : MainAPI() {
-    override var mainUrl = "https://rezka-ua.org"
+    override var mainUrl = "https://kinojump.com/"
     override var name = "Rezka"
     override var lang = "ru"
     override val hasMainPage = true
@@ -22,7 +22,7 @@ class Rezka : MainAPI() {
         setOf(TvType.Movie, TvType.TvSeries, TvType.Anime, TvType.Cartoon, TvType.OVA)
 
     override suspend fun search(query: String): List<SearchResponse> {
-        val url = "$mainUrl/search/?do=search&subaction=search&q=$query"
+        val url = "$mainUrl/index.php?do=search&subaction=search&search_start=0&full_search=0&story=$query"
         val doc = app.get(url).document
 
         return doc.select(".b-content__inline_item").map { element ->
@@ -151,27 +151,6 @@ class Rezka : MainAPI() {
         }
     }
 }
-
-override suspend fun loadLinks(
-        data: String,
-        isCasting: Boolean,
-        subtitleCallback: (SubtitleFile) -> Unit,
-        callback: (ExtractorLink) -> Unit
-    ): Boolean {
-        try {
-            val extractor = RezkaExtractor()
-            extractor.getUrl(
-                data,
-                referer = mainUrl,
-                subtitleCallback = subtitleCallback,
-                callback = callback
-            )
-            return true
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
-        return false
-    }
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
         return loadRezkaMainPage(page)

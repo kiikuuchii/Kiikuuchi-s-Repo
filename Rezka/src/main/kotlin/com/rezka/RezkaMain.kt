@@ -6,10 +6,10 @@ import com.lagradost.cloudstream3.utils.*
 
     suspend fun MainAPI.loadRezkaMainPage(page: Int): HomePageResponse {
     val categories = listOf(
-        "🎬 Фильмы" to "$mainUrl/page/$page/?filter=watching&genre=1",
-        "📺 Сериалы" to "$mainUrl/page/$page/?filter=watching&genre=2",
-        "🎞️ Мультфильмы" to "$mainUrl/page/$page/?filter=watching&genre=3",
-        "🍥 Аниме" to "$mainUrl/page/$page/?filter=watching&genre=82",
+        "🎬 Фильмы" to "$mainUrl/page/$page/films/",
+        "📺 Сериалы" to "$mainUrl/page/$page/serials/",
+        "🎞️ Мультфильмы" to "$mainUrl/page/$page/cartoons/",
+        "🍥 Аниме" to "$mainUrl/page/$page/anime/",
     )
 
     return newHomePageResponse(
