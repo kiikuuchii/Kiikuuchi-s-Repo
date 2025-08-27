@@ -38,56 +38,51 @@ class Yoserial : MainAPI() {
     }
 
     override suspend fun load(url: String): LoadResponse {
-    val doc = app.get(url).document
+        val doc = app.get(url).document
 
-    val title = doc.selectFirst("h1")?.text()?.trim().orEmpty()
-
-    val poster = doc.selectFirst("div.page__poster img")?.attr("src")?.let {
-        if (it.startsWith("http")) it else mainUrl + it
-    }
-
-    val description = doc.selectFirst("div.full-text[itemprop=description]")?.text()?.trim()
-    val year = doc.selectFirst("ul.page__list span[itemprop=dateCreated]")?.text()?.toIntOrNull()
-    val genres = doc.select("ul.page__list span[itemprop=genre] a").map { it.text() }
-
-    // ---------- Сезоны ----------
-    val seasons = doc.select("div[data-select=seasonType1] button[data-id]")
-        .mapNotNull { el ->
-            val id = el.attr("data-id").toIntOrNull() ?: return@mapNotNull null
-            id to el.text().trim()
+        val title = doc.selectFirst("h1")?.text()?.trim().orEmpty()
+        val poster = doc.selectFirst("div.page__poster img")?.attr("src")?.let {
+            if (it.startsWith("http")) it else mainUrl + it
         }
+        val description = doc.selectFirst("div.full-text[itemprop=description]")?.text()?.trim()
+        val year = doc.selectFirst("ul.page__list span[itemprop=dateCreated]")?.text()?.toIntOrNull()
+        val genres = doc.select("ul.page__list span[itemprop=genre] a").map { it.text() }
 
-    // ---------- Серии ----------
-    val episodesList = doc.select("div[data-select=episodeType1] button[data-id]")
-        .mapNotNull { el ->
-            val id = el.attr("data-id").toIntOrNull() ?: return@mapNotNull null
-            id to el.text().trim()
+        val allEpisodes = mutableListOf<Episode>()
+
+        doc.select("div[data-select=seasonType1] button[data-id]").forEach { seasonElement ->
+            val seasonId = seasonElement.attr("data-id").toIntOrNull() ?: return@forEach
+            val seasonName = seasonElement.text().trim()
+
+            // Находим все серии, которые относятся к этому сезону
+            // Селектор 'div[data-select="episodeType$seasonId"]' работает для динамической загрузки серий.
+            // Примечание: Убедитесь, что `data-select` для серий соответствует формату на сайте.
+            val episodesForSeason = doc.select("div[data-select=episodeType$seasonId] button[data-id]")
+
+            episodesForSeason.forEach { episodeElement ->
+                val episodeId = episodeElement.attr("data-id").toIntOrNull() ?: return@forEach
+                val episodeName = episodeElement.text().trim()
+
+                allEpisodes.add(
+                    newEpisode(url) {
+                        this.name = episodeName
+                        this.season = seasonId
+                        this.episode = episodeId
+                    }
+                )
+            }
         }
-
-    val allEpisodes = mutableListOf<Episode>()
-
-    for ((seasonId, _) in seasons) {
-        for ((epId, epName) in episodesList) {
-            allEpisodes.add(
-                newEpisode(url) {
-                    this.name = epName
-                    this.season = seasonId
-                    this.episode = epId
-                }
-            )
+        
+        return newTvSeriesLoadResponse(
+            name = title,
+            url = url,
+            type = TvType.TvSeries,
+            episodes = allEpisodes
+        ) {
+            this.posterUrl = poster
+            this.plot = description
+            this.year = year
+            this.tags = genres
         }
     }
-
-    return newTvSeriesLoadResponse(
-        name = title,
-        url = url,
-        type = TvType.TvSeries,
-        episodes = allEpisodes
-    ) {
-        this.posterUrl = poster
-        this.plot = description
-        this.year = year
-        this.tags = genres
-    }
-  }
 }
