@@ -9,7 +9,6 @@ import com.lagradost.cloudstream3.LoadResponse
 import com.lagradost.cloudstream3.HomePageResponse
 import org.jsoup.Jsoup
 
-
 class Kinojump : MainAPI() {
     override var mainUrl = "https://kinojump.com"
     override var name = "Kinojump"
@@ -23,31 +22,36 @@ class Kinojump : MainAPI() {
         val url = "$mainUrl/index.php?do=search&subaction=search&story=$query"
         val doc = app.get(url).document
 
-        return doc.select(".short-list .short-item").map { element ->
-            val href = element.selectFirst("a")!!.attr("href")
-            val title = element.selectFirst(".short-title")!!.text()
-            val poster = element.selectFirst(".short-img-holder img")!!.attr("data-src")
-            val year = element.selectFirst(".short-date")?.text()?.toIntOrNull()
+        return doc.select("div.searchitem").mapNotNull { element ->
+            val titleElement = element.selectFirst("h3 a") ?: return@mapNotNull null
+            val href = titleElement.attr("href")
+            val title = titleElement.text()
+
+            val poster = element.selectFirst("img")?.attr("src")
+
+            val year = element.select("ul li").map { it.text() }
+                .firstOrNull { it.matches(Regex("\\d{4}")) }
+                ?.toIntOrNull()
+
+            val typeText = element.select("ul li").joinToString(" ").lowercase()
 
             val baseType = when {
-                href.contains("/anime/") -> {
+                typeText.contains("аниме") -> {
                     if (title.contains("OVA", true) || title.contains("ОВА", true))
                         TvType.OVA else TvType.Anime
                 }
-                href.contains("/cartoon/") -> TvType.Cartoon
-                href.contains("/series/") -> TvType.TvSeries
+                typeText.contains("мульт") -> TvType.Cartoon
+                typeText.contains("сериал") -> TvType.TvSeries
                 else -> TvType.Movie
             }
 
-            val episodic = baseType != TvType.Movie
-
-            if (episodic) {
-                newTvSeriesSearchResponse(title, href, baseType) {
+            if (baseType == TvType.Movie) {
+                newMovieSearchResponse(title, href, baseType) {
                     this.posterUrl = poster
                     this.year = year
                 }
             } else {
-                newMovieSearchResponse(title, href, baseType) {
+                newTvSeriesSearchResponse(title, href, baseType) {
                     this.posterUrl = poster
                     this.year = year
                 }
@@ -64,7 +68,7 @@ class Kinojump : MainAPI() {
 
         val genres = document.select(".fstory-line:contains(Жанр) a")
             .map { it.text().trim() }
-        
+
         val tags = genres.toMutableList()
         val year = document.selectFirst(".fstory-line:contains(Год) a")?.text()?.toIntOrNull()
 
@@ -112,8 +116,8 @@ class Kinojump : MainAPI() {
             }
         }
     }
-	
-	 override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse? {
+
+    override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse? {
         return loadKinojumpMainPage(page)
     }
 }
