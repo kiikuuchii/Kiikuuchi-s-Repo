@@ -74,63 +74,84 @@ class Kinojump : MainAPI() {
     }
 
     override suspend fun load(url: String): LoadResponse? {
-        val fixedUrl = forceMainUrl(url)
-        val document = app.get(fixedUrl, headers = mapOf("User-Agent" to USER_AGENT)).document
+    // вспомогательная функция, которая не даёт улететь на web.kinojump.com
+    suspend fun safeGet(u: String): org.jsoup.nodes.Document {
+        var response = app.get(
+            forceMainUrl(u)!!,
+            headers = mapOf("User-Agent" to USER_AGENT),
+            allowRedirects = false
+        )
 
-        val title = document.selectFirst("h1.post-title")?.text() ?: return null
-        val poster = document.selectFirst(".fstory-img img")?.attr("data-src")
-            ?.let { forceMainUrl(fixUrl(it)) }
-        val description = document.selectFirst(".fstory-content")?.text()
-
-        val genres = document.select(".fstory-line:contains(Жанр) a")
-            .map { it.text().trim() }
-
-        val tags = genres.toMutableList()
-        val year = document.selectFirst(".fstory-line:contains(Год) a")?.text()?.toIntOrNull()
-
-        val isAnime = genres.any { it.equals("Аниме", ignoreCase = true) }
-        val isCartoon = genres.any { it.equals("Мультфильм", ignoreCase = true) }
-        val hasEpisodes = document.select(".seria-item").isNotEmpty()
-
-        val contentType = when {
-            isAnime -> TvType.Anime
-            isCartoon -> TvType.Cartoon
-            hasEpisodes -> TvType.TvSeries
-            else -> TvType.Movie
-        }
-
-        val episodes = document.select(".seria-item").mapIndexed { index, el ->
-            val epName = el.selectFirst(".seria-title")?.text()
-            val epRawHref = el.selectFirst("a")?.attr("href") ?: fixedUrl
-            val epHref = forceMainUrl(fixUrl(epRawHref))
-            newEpisode(epHref) {
-                this.name = epName
-                this.episode = index + 1
+        // если сервер ответил редиректом
+        if (response.code in 300..399) {
+            val redirectUrl = response.headers["Location"]
+            if (redirectUrl != null && redirectUrl.contains("web.kinojump.com")) {
+                // игнорируем редирект и ещё раз пробуем через kinojump.com
+                response = app.get(
+                    forceMainUrl(u)!!,
+                    headers = mapOf("User-Agent" to USER_AGENT),
+                    allowRedirects = false
+                )
             }
         }
 
-        return when (contentType) {
-            TvType.Anime -> newAnimeLoadResponse(title, fixedUrl, contentType, false) {
-                this.posterUrl = poster
-                this.year = year
-                this.plot = description
-                this.tags = tags
-                if (episodes.isNotEmpty()) {
-                    addEpisodes(DubStatus.Subbed, episodes)
-                }
-            }
-            TvType.Cartoon, TvType.TvSeries -> newTvSeriesLoadResponse(title, fixedUrl, contentType, episodes) {
-                this.posterUrl = poster
-                this.year = year
-                this.plot = description
-                this.tags = tags
-            }
-            else -> newMovieLoadResponse(title, fixedUrl, contentType, fixedUrl) {
-                this.posterUrl = poster
-                this.year = year
-                this.plot = description
-                this.tags = tags
-            }
+        return response.document
+    }
+
+    val document = safeGet(url)
+
+    val title = document.selectFirst("h1.post-title")?.text() ?: return null
+    val poster = document.selectFirst(".fstory-img img")?.attr("data-src")?.let { fixUrl(it) }
+    val description = document.selectFirst(".fstory-content")?.text()
+
+    val genres = document.select(".fstory-line:contains(Жанр) a")
+        .map { it.text().trim() }
+
+    val tags = genres.toMutableList()
+    val year = document.selectFirst(".fstory-line:contains(Год) a")?.text()?.toIntOrNull()
+
+    val isAnime = genres.any { it.equals("Аниме", ignoreCase = true) }
+    val isCartoon = genres.any { it.equals("Мультфильм", ignoreCase = true) }
+    val hasEpisodes = document.select(".seria-item").isNotEmpty()
+
+    val contentType = when {
+        isAnime -> TvType.Anime
+        isCartoon -> TvType.Cartoon
+        hasEpisodes -> TvType.TvSeries
+        else -> TvType.Movie
+    }
+
+    val episodes = document.select(".seria-item").mapIndexed { index, el ->
+        val epName = el.selectFirst(".seria-title")?.text()
+        val href = fixUrl(el.selectFirst("a")?.attr("href") ?: url)
+        newEpisode(href) {
+            this.name = epName
+            this.episode = index + 1
         }
     }
+
+    return when (contentType) {
+        TvType.Anime -> newAnimeLoadResponse(title, url, contentType, false) {
+            this.posterUrl = poster
+            this.year = year
+            this.plot = description
+            this.tags = tags
+            if (episodes.isNotEmpty()) {
+                addEpisodes(DubStatus.Subbed, episodes)
+            }
+        }
+        TvType.Cartoon, TvType.TvSeries -> newTvSeriesLoadResponse(title, url, contentType, episodes) {
+            this.posterUrl = poster
+            this.year = year
+            this.plot = description
+            this.tags = tags
+        }
+        else -> newMovieLoadResponse(title, url, contentType, url) {
+            this.posterUrl = poster
+            this.year = year
+            this.plot = description
+            this.tags = tags
+        }
+     }
+  }
 }
