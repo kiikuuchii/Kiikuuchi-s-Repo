@@ -37,18 +37,31 @@ class Yoserial : MainAPI() {
         }
     }
 
-    override suspend fun load(url: String): LoadResponse {
-        val doc = app.get(url).document
+    override suspend fun load(url: String): LoadResponse? {
+    val doc = app.get(url).document
 
-        val title = doc.selectFirst("h1")?.text() ?: "Без названия"
-        val poster = doc.selectFirst("div.fposter img")?.attr("src")
-        val description = doc.selectFirst("div.full-news__text")?.text()
-        val genre = doc.select("div.speedbar a").getOrNull(1)?.text()
+    val title = doc.selectFirst("h1")?.text()?.trim().orEmpty()
 
-        return newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes = emptyList()) {
-            this.posterUrl = fixUrlNull(poster)
-            this.plot = description
-            this.tags = listOfNotNull(genre)
-        }
+    // Постер
+    val poster = doc.selectFirst(".fposter img")?.attr("src")?.let {
+        if (it.startsWith("http")) it else mainUrl + it
     }
+
+    // Описание
+    val description = doc.selectFirst(".fdesc")?.text()?.trim()
+
+    // Жанры
+    val genres = doc.select(".speedbar a").drop(1).dropLast(1).map { it.text() }
+
+    return newTvSeriesLoadResponse(
+        name = title,
+        url = url,
+        type = TvType.TvSeries,
+        episodes = emptyList() // пока не трогаем, добавим позже
+    ) {
+        this.posterUrl = poster
+        this.plot = description
+        this.tags = genres
+    }
+  }
 }
