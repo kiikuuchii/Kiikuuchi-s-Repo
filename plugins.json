@@ -1,10 +1,10 @@
 [
     {
         "iconUrl": "https://raw.githubusercontent.com/LikDev-256/likdev256-tamil-providers/master/AllMovieLandProvider/icon.png",
-        "jarFileSize": 55400,
+        "jarFileSize": 46600,
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/kiikuuchii/Kiikuuchi-s-Repo",
-        "fileSize": 13800,
+        "fileSize": 11100,
         "status": 1,
         "language": "ru",
         "authors": [
@@ -17,9 +17,9 @@
         ],
         "version": 451,
         "internalName": "Rezka",
-        "jarUrl": "https://raw.githubusercontent.com/kiikuuchii/Kiikuuchi-s-Repo/builds/Rezka.jar",
+        "jarUrl": "https://raw.githubusercontent.com/kiikuuchii/Kiikuuchi-s-Repo/builds/Kinojump.jar",
         "description": "Rezka Provider for Cloudstream",
-        "url": "https://raw.githubusercontent.com/kiikuuchii/Kiikuuchi-s-Repo/builds/Rezka.cs3",
+        "url": "https://raw.githubusercontent.com/kiikuuchii/Kiikuuchi-s-Repo/builds/Kinojump.cs3",
         "name": "Rezka"
     }
 ]
