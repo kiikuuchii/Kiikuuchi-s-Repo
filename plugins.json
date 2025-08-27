@@ -1,10 +1,10 @@
 [
     {
         "iconUrl": "https://kinojump.com/templates/jump/images/logo.svg",
-        "jarFileSize": 53500,
+        "jarFileSize": 19900,
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/kiikuuchii/Kiikuuchi-s-Repo",
-        "fileSize": 13200,
+        "fileSize": 6460,
         "status": 1,
         "language": "ru",
         "authors": [
@@ -16,10 +16,10 @@
             "Anime"
         ],
         "version": 451,
-        "internalName": "KinoJump",
-        "jarUrl": "https://raw.githubusercontent.com/kiikuuchii/Kiikuuchi-s-Repo/builds/Kinojump.jar",
-        "description": "KinoJump Provider for Cloudstream",
-        "url": "https://raw.githubusercontent.com/kiikuuchii/Kiikuuchi-s-Repo/builds/Kinojump.cs3",
-        "name": "Kinojump"
+        "internalName": "YoSerial",
+        "jarUrl": "https://raw.githubusercontent.com/kiikuuchii/Kiikuuchi-s-Repo/builds/Yoserial.jar",
+        "description": "YoSerial Provider for Cloudstream",
+        "url": "https://raw.githubusercontent.com/kiikuuchii/Kiikuuchi-s-Repo/builds/Yoserial.cs3",
+        "name": "YoSerial"
     }
 ]
