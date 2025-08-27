@@ -1,7 +1,7 @@
 cloudstream {
     authors     = listOf("kiikuuchii")
     language    = "ru"
-    description = "Rezka Provider for Cloudstream"
+    description = "Yoserial Provider for Cloudstream"
     status      = 1
     version     = 451
 
@@ -9,4 +9,5 @@ cloudstream {
     
 	isCrossPlatform = true
 }
+
 
