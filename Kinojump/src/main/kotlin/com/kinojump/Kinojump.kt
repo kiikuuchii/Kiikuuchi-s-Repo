@@ -58,60 +58,61 @@ class Kinojump : MainAPI() {
     }
 
     override suspend fun load(url: String): LoadResponse? {
-        val document = app.get(url, headers = mapOf("User-Agent" to USER_AGENT)).document
+    // Приводим URL к основному домену
+    val fixedUrl = url.replace("web.kinojump.com", "kinojump.com")
 
-        val title = document.selectFirst("h1.post-title")?.text() ?: return null
-        val poster = document.selectFirst(".fstory-img img")?.attr("data-src")?.let { fixUrl(it) }
-        val description = document.selectFirst(".fstory-content")?.text()
+    val document = app.get(fixedUrl, headers = mapOf("User-Agent" to USER_AGENT)).document
 
-        val genres = document.select(".fstory-line:contains(Жанр) a")
-            .map { it.text().trim() }
+    val title = document.selectFirst("h1.post-title")?.text() ?: return null
+    val poster = document.selectFirst(".fstory-img img")?.attr("data-src")?.let { fixUrl(it) }
+    val description = document.selectFirst(".fstory-content")?.text()
 
-        val tags = genres.toMutableList()
-        val year = document.selectFirst(".fstory-line:contains(Год) a")?.text()?.toIntOrNull()
+    val genres = document.select(".fstory-line:contains(Жанр) a").map { it.text().trim() }
+    val tags = genres.toMutableList()
+    val year = document.selectFirst(".fstory-line:contains(Год) a")?.text()?.toIntOrNull()
 
-        val isAnime = genres.any { it.equals("Аниме", ignoreCase = true) }
-        val isCartoon = genres.any { it.equals("Мультфильм", ignoreCase = true) }
-        val hasEpisodes = document.select(".seria-item").isNotEmpty()
+    val isAnime = genres.any { it.equals("Аниме", ignoreCase = true) }
+    val isCartoon = genres.any { it.equals("Мультфильм", ignoreCase = true) }
+    val hasEpisodes = document.select(".seria-item").isNotEmpty()
 
-        val contentType = when {
-            isAnime -> TvType.Anime
-            isCartoon -> TvType.Cartoon
-            hasEpisodes -> TvType.TvSeries
-            else -> TvType.Movie
-        }
+    val contentType = when {
+        isAnime -> TvType.Anime
+        isCartoon -> TvType.Cartoon
+        hasEpisodes -> TvType.TvSeries
+        else -> TvType.Movie
+    }
 
-        val episodes = document.select(".seria-item").mapIndexed { index, el ->
-            val epName = el.selectFirst(".seria-title")?.text()
-            val href = fixUrl(el.selectFirst("a")?.attr("href") ?: url)
-            newEpisode(href) {
-                this.name = epName
-                this.episode = index + 1
-            }
-        }
-
-        return when (contentType) {
-            TvType.Anime -> newAnimeLoadResponse(title, url, contentType, false) {
-                this.posterUrl = poster
-                this.year = year
-                this.plot = description
-                this.tags = tags
-                if (episodes.isNotEmpty()) {
-                    addEpisodes(DubStatus.Subbed, episodes)
-                }
-            }
-            TvType.Cartoon, TvType.TvSeries -> newTvSeriesLoadResponse(title, url, contentType, episodes) {
-                this.posterUrl = poster
-                this.year = year
-                this.plot = description
-                this.tags = tags
-            }
-            else -> newMovieLoadResponse(title, url, contentType, url) {
-                this.posterUrl = poster
-                this.year = year
-                this.plot = description
-                this.tags = tags
-            }
+    val episodes = document.select(".seria-item").mapIndexed { index, el ->
+        val epName = el.selectFirst(".seria-title")?.text()
+        val href = fixUrl(el.selectFirst("a")?.attr("href") ?: fixedUrl)
+        newEpisode(href) {
+            this.name = epName
+            this.episode = index + 1
         }
     }
+
+    return when (contentType) {
+        TvType.Anime -> newAnimeLoadResponse(title, fixedUrl, contentType, false) {
+            this.posterUrl = poster
+            this.year = year
+            this.plot = description
+            this.tags = tags
+            if (episodes.isNotEmpty()) {
+                addEpisodes(DubStatus.Subbed, episodes)
+            }
+        }
+        TvType.Cartoon, TvType.TvSeries -> newTvSeriesLoadResponse(title, fixedUrl, contentType, episodes) {
+            this.posterUrl = poster
+            this.year = year
+            this.plot = description
+            this.tags = tags
+        }
+        else -> newMovieLoadResponse(title, fixedUrl, contentType, fixedUrl) {
+            this.posterUrl = poster
+            this.year = year
+            this.plot = description
+            this.tags = tags
+        }
+     }
+  }
 }
