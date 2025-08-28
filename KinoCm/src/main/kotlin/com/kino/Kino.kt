@@ -43,117 +43,37 @@ class KinoCm : MainAPI() {
 
     // --------------------- LOAD ---------------------
     override suspend fun load(url: String): LoadResponse {
-        val doc = app.get(url).document
+    val doc = app.get(url).document
 
-        val title = doc.selectFirst(".fullstory__title h1, h1")?.text()?.trim()
-            ?: throw ErrorLoadingException("Не найдено название")
+    val title = doc.selectFirst("article .fullstory__title h1")?.text()?.trim() ?: "Без названия"
+    val poster = doc.selectFirst(".movie_poster img")?.attr("src")?.trim()
+    
+    // --- Описание ---
+    val plot = doc.selectFirst(".r-1:has(.rl-1:contains(Слоган)) .rl-3")?.text()?.trim()
+    
+    // --- Жанры ---
+    val genres = doc.selectFirst(".r-1:has(.rl-1:contains(Жанр сериала)) .rl-3")
+        ?.text()
+        ?.split('/', '·', '|')
+        ?.map { it.trim() }
+        ?.filter { it.isNotEmpty() }
+        ?: emptyList()
 
-        val posterRaw = doc.selectFirst(".movie__poster img, .movie_poster img, .full-img img")?.attr("src")
-        val poster = posterRaw?.let { fixUrl(it) }
+    // --- Год ---
+    val year = doc.selectFirst(".m_info .d-flex:contains(Год выпуска)")?.select("a")?.firstOrNull()?.text()?.toIntOrNull()
 
-        val description = doc.selectFirst(".full-text, .fullstory__desc, .excerpt, .full__text")?.text()?.trim()
-
-        // Информация
-        var year: Int? = null
-        var country: String? = null
-        var duration: String? = null
-        var premiere: String? = null
-        var quality: String? = null
-        var translation: String? = null
-        var added: String? = null
-        var imdb: String? = null
-        val genres = mutableListOf<String>()
-
-        val infoElements = doc.select(".m_info .d-flex, .m_info .nd-flex, .movie__info .d-flex, .movie__info .nd-flex")
-        for (el in infoElements) {
-            val b = el.selectFirst("b")
-            val key = b?.text()?.trim()?.replace(":", "") ?: ""
-            val value = el.ownText()?.trim()?.ifEmpty { el.text().replace(b?.text() ?: "", "").trim() }
-
-            when {
-                key.contains("Год", ignoreCase = true) -> {
-                    value?.filter { it.isDigit() }?.take(4)?.toIntOrNull()?.let { year = it }
-                }
-                key.contains("Страна", ignoreCase = true) -> {
-                    country = el.selectFirst("a")?.text()?.trim() ?: value
-                }
-                key.contains("Жанр", ignoreCase = true) -> {
-                    el.select("a").forEach { a -> 
-                        val g = a.text().trim()
-                        if (g.isNotEmpty()) genres.add(g)
-                    }
-                }
-                key.contains("Продолжительность", ignoreCase = true) -> {
-                    duration = value
-                }
-                key.contains("Премьера", ignoreCase = true) -> {
-                    premiere = value
-                }
-                key.contains("Качество", ignoreCase = true) -> {
-                    quality = value
-                }
-                key.contains("Перевод", ignoreCase = true) -> {
-                    translation = value
-                }
-                key.contains("Добавлено", ignoreCase = true) -> {
-                    added = value
-                }
-            }
-        }
-
-        val kp = doc.selectFirst(".rates .kp")?.text()?.replace("KP:", "")?.trim()
-        val imdbText = doc.selectFirst(".rates .imdb")?.text()?.replace("IMDb:", "")?.trim()
-        imdb = imdbText ?: imdb
-
-        val iframeRaw = doc.selectFirst("iframe[src*='cinemar'], iframe[src*='cinemar.cc'], iframe#film, iframe")?.attr("src")
-        val embedUrl = iframeRaw?.let { 
-            if (it.startsWith("//")) "https:$it" 
-            else if (it.startsWith("/")) "${mainUrl.trimEnd('/')}$it" 
-            else it 
-        }
-
-        val isSeries = title.contains("сезон", ignoreCase = true) || doc.select(".added, .movie__info .added, .m_info:contains(сезон)").isNotEmpty()
-
-        val extraInfo = buildString {
-            if (!country.isNullOrEmpty()) append("Страна: $country\n")
-            if (year != null) append("Год: $year\n")
-            if (!duration.isNullOrEmpty()) append("Продолжительность: $duration\n")
-            if (!translation.isNullOrEmpty()) append("Перевод: $translation\n")
-            if (!quality.isNullOrEmpty()) append("Качество: $quality\n")
-            if (!premiere.isNullOrEmpty()) append("Премьера: $premiere\n")
-            if (!added.isNullOrEmpty()) append("Добавлено: $added\n")
-            if (!imdb.isNullOrEmpty()) append("IMDB: $imdb\n")
-            if (genres.isNotEmpty()) append("Жанры: ${genres.joinToString(", ")}\n")
-        }
-
-        val fullPlot = listOfNotNull(description, if (extraInfo.isBlank()) null else extraInfo).joinToString("\n\n")
-
-        return if (isSeries) {
-            newTvSeriesLoadResponse(
-                name = title,
-                url = url,
-                type = TvType.TvSeries,
-                episodes = emptyList()
-            ) {
-                posterUrl = poster
-                this.plot = fullPlot
-                this.year = year
-                this.tags = genres
-                this.apiName = name
-            }
-        } else {
-            newMovieLoadResponse(
-                name = title,
-                url = url,
-                type = TvType.Movie,
-                dataUrl = embedUrl ?: url
-            ) {
-                posterUrl = poster
-                this.plot = fullPlot
-                this.year = year
-                this.tags = genres
-                this.apiName = name
-            }
-        }
+    // --- Возвращаем правильный объект ---
+    return newTvSeriesLoadResponse(
+        name = title,
+        url = url,
+        type = TvType.TvSeries,
+        episodes = emptyList()
+    ) {
+        posterUrl = poster
+        this.plot = plot
+        this.year = year
+        this.tags = genres
+        apiName = name
     }
+  }
 }
