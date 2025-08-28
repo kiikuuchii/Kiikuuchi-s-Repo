@@ -1,4 +1,4 @@
-package com.yoserial
+package com.kino
 
 
 import android.content.Context
@@ -7,8 +7,8 @@ import com.lagradost.cloudstream3.plugins.Plugin
 
 
 @CloudstreamPlugin
-class YoserialPlugin : Plugin() {
+class KinoPlugin : Plugin() {
 override fun load(context: Context) {
-registerMainAPI(Yoserial())
+registerMainAPI(Kino())
 }
 }
