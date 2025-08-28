@@ -1,7 +1,7 @@
 cloudstream {
     authors     = listOf("kiikuuchii")
     language    = "ru"
-    description = "Yoserial Provider for Cloudstream"
+    description = "KinoCm Provider for Cloudstream"
     status      = 1
     version     = 451
 
@@ -9,5 +9,6 @@ cloudstream {
     
 	isCrossPlatform = true
 }
+
 
 
