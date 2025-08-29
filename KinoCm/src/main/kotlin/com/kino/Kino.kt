@@ -41,39 +41,37 @@ class KinoCm : MainAPI() {
         }
     }
 
-    // --------------------- LOAD ---------------------
     override suspend fun load(url: String): LoadResponse {
     val doc = app.get(url).document
 
-    val title = doc.selectFirst("article .fullstory__title h1")?.text()?.trim() ?: "Без названия"
-    val poster = doc.selectFirst(".movie_poster img")?.attr("src")?.trim()
-    
-    // --- Описание ---
-    val plot = doc.selectFirst(".r-1:has(.rl-1:contains(Слоган)) .rl-3")?.text()?.trim()
-    
-    // --- Жанры ---
-    val genres = doc.selectFirst(".r-1:has(.rl-1:contains(Жанр сериала)) .rl-3")
-        ?.text()
-        ?.split('/', '·', '|')
-        ?.map { it.trim() }
-        ?.filter { it.isNotEmpty() }
-        ?: emptyList()
+    val title = doc.selectFirst("h1")?.text() ?: ""
+    val description = doc.selectFirst("div.fullstory__text")?.text()
+        ?: doc.select("div.r-1:contains(Слоган:) .rl-3").text()
+    val poster = doc.selectFirst("div.fullstory__poster img")?.attr("src")
+    val yearText = doc.select("div.r-1:contains(Год выпуска:) a").text()
+    val year = yearText.toIntOrNull()
 
-    // --- Год ---
-    val year = doc.selectFirst(".m_info .d-flex:contains(Год выпуска)")?.select("a")?.firstOrNull()?.text()?.toIntOrNull()
+    val genres = doc.select("div.r-1:matchesOwn(Жанр)").select("a")
+        .map { it.text() }
+        .ifEmpty { listOf(doc.select("div.r-1:contains(Жанр сериала:) .rl-3").text()) }
 
-    // --- Возвращаем правильный объект ---
-    return newTvSeriesLoadResponse(
-        name = title,
-        url = url,
-        type = TvType.TvSeries,
-        episodes = emptyList()
-    ) {
-        posterUrl = poster
-        this.plot = plot
-        this.year = year
-        this.tags = genres
-        apiName = name
-    }
-  }
+    val isSeries = doc.select("div.r-1:contains(Жанр сериала:)").isNotEmpty()
+	val episodesList = emptyList<Episode>() // пока пустой список
+
+    return if (!isSeries) {
+        newMovieLoadResponse(title, url, TvType.Movie, url) {
+            this.posterUrl = poster
+            this.year = year
+            this.plot = description
+            this.tags = genres
+        }
+    } else {
+        newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes = episodesList) {
+            this.posterUrl = poster
+            this.year = year
+            this.plot = description
+            this.tags = genres
+        }
+      }
+   }
 }
