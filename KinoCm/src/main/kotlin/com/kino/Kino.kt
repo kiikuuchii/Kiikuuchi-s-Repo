@@ -56,12 +56,23 @@ class KinoCm : MainAPI() {
     val yearText = doc.select("div.r-1:contains(Год выпуска:) a").text()
     val year = yearText.toIntOrNull()
 
-    val genres = doc.select("div.r-1:matchesOwn(Жанр)").select("a")
-        .map { it.text() }
-        .ifEmpty { listOf(doc.select("div.r-1:contains(Жанр сериала:) .rl-3").text()) }
+    val genres = doc.selectFirst(".r-1:has(.rl-1:contains(Жанр сериала)) .rl-3")
+        ?.text()
+        ?.split('/', '·', '|')
+        ?.map { it.trim() }
+        ?.filter { it.isNotEmpty() }
+        ?: emptyList()
 
     val isSeries = doc.select("div.r-1:contains(Жанр сериала:)").isNotEmpty()
-    val episodesList = emptyList<Episode>() // пока пустой список
+    val episodesList = doc.select("div.serial-series-box select option")
+    .map { option ->
+        newEpisode(option.attr("data-hash")) {   // URL или идентификатор эпизода
+            name = option.attr("data-title")
+            season = 1
+            episode = option.attr("value").toIntOrNull() ?: 0
+            // url не трогаем — оно уже задано через первый параметр
+        }
+    }
 
     return if (!isSeries) {
         newMovieLoadResponse(title, url, TvType.Movie, url) {
