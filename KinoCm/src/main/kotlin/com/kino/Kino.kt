@@ -64,15 +64,17 @@ class KinoCm : MainAPI() {
         ?: emptyList()
 
     val isSeries = doc.select("div.r-1:contains(Жанр сериала:)").isNotEmpty()
-    val episodesList = doc.select("div.serial-series-box select option")
-    .map { option ->
-        newEpisode(option.attr("data-hash")) {   // URL или идентификатор эпизода
-            name = option.attr("data-title")
-            season = 1
-            episode = option.attr("value").toIntOrNull() ?: 0
-            // url не трогаем — оно уже задано через первый параметр
-        }
+    val episodesList = doc.select("div.serial-series-box select option").map { ep ->
+    val epTitle = ep.attr("data-title") // "1 серия", "2 серия" и т.д.
+    val epNumber = ep.attr("value").toIntOrNull() ?: 0
+    val epId = ep.attr("data-id") // id эпизода для запроса видео
+    newEpisode(epId) {
+        name = epTitle
+        season = 1 // если на сайте пока только 1 сезон, можно так
+        episode = epNumber
+        posterUrl = poster // можно использовать постер сериала
     }
+}
 
     return if (!isSeries) {
         newMovieLoadResponse(title, url, TvType.Movie, url) {
