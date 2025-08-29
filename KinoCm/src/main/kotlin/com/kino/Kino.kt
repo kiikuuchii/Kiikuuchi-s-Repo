@@ -45,9 +45,14 @@ class KinoCm : MainAPI() {
     val doc = app.get(url).document
 
     val title = doc.selectFirst("h1")?.text() ?: ""
+    
     val description = doc.selectFirst("div.fullstory__text")?.text()
         ?: doc.select("div.r-1:contains(Слоган:) .rl-3").text()
-    val poster = doc.selectFirst("div.fullstory__poster img")?.attr("src")
+    
+    // Формируем полный URL постера
+    val posterSrc = doc.selectFirst("div.movie_poster img")?.attr("src")
+    val poster = posterSrc?.let { if (it.startsWith("http")) it else "https://kino.cm$it" }
+
     val yearText = doc.select("div.r-1:contains(Год выпуска:) a").text()
     val year = yearText.toIntOrNull()
 
@@ -56,7 +61,7 @@ class KinoCm : MainAPI() {
         .ifEmpty { listOf(doc.select("div.r-1:contains(Жанр сериала:) .rl-3").text()) }
 
     val isSeries = doc.select("div.r-1:contains(Жанр сериала:)").isNotEmpty()
-	val episodesList = emptyList<Episode>() // пока пустой список
+    val episodesList = emptyList<Episode>() // пока пустой список
 
     return if (!isSeries) {
         newMovieLoadResponse(title, url, TvType.Movie, url) {
@@ -72,6 +77,6 @@ class KinoCm : MainAPI() {
             this.plot = description
             this.tags = genres
         }
-      }
+     }
    }
 }
