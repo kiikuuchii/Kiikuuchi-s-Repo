@@ -59,9 +59,11 @@ class KinoCm : MainAPI() {
         val doc = app.get(url).document
 
         // Постер
-        val poster = doc.selectFirst("div.bslide__poster a")?.attr("href")
-            ?: doc.selectFirst("div.bslide__poster img")?.attr("data-src")
-            ?: doc.selectFirst("div.bslide__poster img")?.attr("src")?.let {
+        val poster = doc.selectFirst("div.bslide__poster a")?.attr("href")?.let {
+            if (it.startsWith("http")) it else "https://kinojump.com$it"
+        } ?: doc.selectFirst("div.bslide__poster img")?.attr("data-src")?.let {
+            if (it.startsWith("http")) it else "https://kinojump.com$it"
+        } ?: doc.selectFirst("div.bslide__poster img")?.attr("src")?.let {
             if (it.startsWith("http")) it else "https://kinojump.com$it"
         }
 
