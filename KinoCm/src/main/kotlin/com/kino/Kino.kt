@@ -1,10 +1,16 @@
 package com.kino
 
 import com.lagradost.cloudstream3.*
-import com.lagradost.cloudstream3.LoadResponse.Companion.addImdbUrl
+import com.lagradost.cloudstream3.Episode
+import com.lagradost.cloudstream3.LoadResponse
+import com.lagradost.cloudstream3.utils.ExtractorLink
+import com.lagradost.cloudstream3.utils.newExtractorLink
+import com.lagradost.cloudstream3.utils.ExtractorLinkType
+import com.lagradost.cloudstream3.TvType
 import com.lagradost.cloudstream3.utils.*
-import java.net.URLEncoder
 import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
+import org.jsoup.nodes.Document
+import java.net.URLEncoder
 
 class KinoCm : MainAPI() {
     override var mainUrl = "https://kinojump.com"
@@ -60,13 +66,12 @@ class KinoCm : MainAPI() {
     val doc = app.get(url).document
 
     // --- Постер ---
-    val poster = doc.selectFirst("div.bslide__poster a")?.attr("href")?.let {
-        if (it.startsWith("http")) it else "https://kinojump.com$it"
-    } ?: doc.selectFirst("div.bslide__poster img")?.attr("data-src")?.let {
-        if (it.startsWith("http")) it else "https://kinojump.com$it"
-    } ?: doc.selectFirst("div.bslide__poster img")?.attr("src")?.let {
-        if (it.startsWith("http")) it else "https://kinojump.com$it"
-    }
+    val poster = doc.selectFirst("div.bslide__poster a")?.attr("href")
+    ?.let { if (it.startsWith("http")) it else "https://kinojump.com$it" }
+    ?: doc.selectFirst("div.bslide__poster img")?.attr("data-src")
+    ?.let { if (it.startsWith("http")) it else "https://kinojump.com$it" }
+    ?: doc.selectFirst("div.bslide__poster img")?.attr("src")
+    ?.let { if (it.startsWith("http")) it else "https://kinojump.com$it" }
 
     // --- Названия и описание ---
     val title = doc.selectFirst("h1.bslide__title")?.text()?.trim() ?: ""
@@ -160,5 +165,55 @@ data class EpData(
 )
 
 data class SeasonsMap(val all: Map<String, Map<String, Map<String, EpData>>>)
+
+override suspend fun loadLinks(
+    data: String,
+    isCasting: Boolean,
+    subtitleCallback: (SubtitleFile) -> Unit,
+    callback: (ExtractorLink) -> Unit
+): Boolean {
+    val parts = data.split(",")
+    val seasonNumber = parts.getOrNull(0)?.toIntOrNull() ?: 1
+    val episodeNumber = parts.getOrNull(1)?.toIntOrNull() ?: 1
+    val url = parts.getOrNull(2) ?: return false
+
+    val doc = app.get(url).document
+
+    val fileListJson = doc.select("script")
+        .firstOrNull { it.html().contains("const fileList =") }
+        ?.html()
+        ?.substringAfter("const fileList =")
+        ?.substringBeforeLast(";")
+        ?.trim() ?: return false
+
+    val fileList = tryParseJson<FileList>(fileListJson) ?: return false
+    val seasonMap = fileList.all?.get(seasonNumber.toString()) ?: return false
+    val episodeMap = seasonMap[episodeNumber.toString()] ?: return false
+
+    var hasLinks = false
+
+    for ((_, epData) in episodeMap) {
+        if (epData != null) {
+            val hlsUrl = "https://kinojump.com/watch/${epData.id}"
+            val qualityLabel = epData.quality ?: "unknown"
+
+            callback(
+                newExtractorLink(
+                    source = qualityLabel,
+                    name = qualityLabel,
+                    url = hlsUrl                )
+            )
+            hasLinks = true
+        }
+    }
+
+    return hasLinks
+}
+
+data class FileList(
+    val type: String?,
+    val active: EpData?,
+    val all: Map<String, Map<String, Map<String, EpData>>>?
+)
 
 }
